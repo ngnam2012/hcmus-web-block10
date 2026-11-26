@@ -2,9 +2,18 @@ import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { deployRemote, appendLog, readJson, atomicJson, checkManifest } from './release.mjs';
+import { handleApi, bodyJson, json, resetApi } from './server-api.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
+const requestLog = [];
+const clientLog = [];
+const faults = new Map();
+function recordRequest(req, res) {
+  const entry = { time: new Date().toISOString(), port: req.socket.localPort, url: req.url, method: req.method };
+  res.on('finish', () => { entry.status = res.statusCode; entry.finishedAt = new Date().toISOString(); requestLog.push(entry); if (requestLog.length > 10000) requestLog.shift(); appendLog('request-log.jsonl', entry); });
+}
 
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -29,14 +38,19 @@ const remoteControllers = new Map();
 
 function serveStaticFile(req, res, baseDir, options = { isRemote: false }) {
   const parsedUrl = new URL(req.url || '/', 'http://localhost');
-  const delayMs = Math.min(10000, Math.max(0, Number(parsedUrl.searchParams.get('delay') || 0)));
+  const fault = faults.get(`${req.socket.localPort}${parsedUrl.pathname}`);
+  const delayMs = Math.min(10000, Math.max(0, Number(fault?.delayMs || parsedUrl.searchParams.get('delay') || 0)));
 
   const respond = () => {
-    let safeRel = decodeURIComponent(parsedUrl.pathname).replace(/^\/+/, '');
+    if (res.destroyed) return;
+    if (fault?.status === 404) { res.writeHead(404, { 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' }); res.end('Injected 404'); return; }
+    let safeRel;
+    try { safeRel = decodeURIComponent(parsedUrl.pathname).replace(/^\/+/, ''); }
+    catch { res.writeHead(400); res.end('Malformed URL'); return; }
     if (!safeRel) safeRel = 'index.html';
 
     const resolvedPath = path.resolve(baseDir, safeRel);
-    if (!resolvedPath.startsWith(path.resolve(baseDir))) {
+    if (resolvedPath !== path.resolve(baseDir) && !resolvedPath.startsWith(path.resolve(baseDir) + path.sep)) {
       res.writeHead(403);
       res.end('Forbidden');
       return;
@@ -44,7 +58,7 @@ function serveStaticFile(req, res, baseDir, options = { isRemote: false }) {
 
     let finalPath = resolvedPath;
     if (!fs.existsSync(finalPath) || fs.statSync(finalPath).isDirectory()) {
-      if (!options.isRemote) {
+      if (!options.isRemote && !path.extname(parsedUrl.pathname) && !/^\/(api|__|remotes|shared|assets)(\/|$)/.test(parsedUrl.pathname)) {
         finalPath = path.join(baseDir, 'index.html');
       } else {
         res.writeHead(404, {
@@ -93,6 +107,7 @@ function startRemoteServer(cfg) {
 
     const sockets = new Set();
     const server = http.createServer((req, res) => {
+      recordRequest(req, res);
       if (req.method === 'OPTIONS') {
         res.writeHead(204, {
           'Access-Control-Allow-Origin': '*',
@@ -119,7 +134,7 @@ function startRemoteServer(cfg) {
     });
 
     server.on('error', reject);
-    server.listen(cfg.port, () => {
+    server.listen(cfg.port, '127.0.0.1', () => {
       remoteControllers.set(cfg.port, { server, cfg, sockets });
       resolve(true);
     });
@@ -162,9 +177,29 @@ async function startShellServer() {
   const shellDistDir = path.join(ROOT, 'shell', 'dist');
   const liveManifestPath = path.join(ROOT, 'shell', 'public', 'manifest.json');
   const versionsPath = path.join(ROOT, 'shell', 'public', 'manifest-versions.json');
+  const releases = readJson(versionsPath);
+  const baselineManifest = { catalog: releases.catalog['1.4.0'], cart: releases.cart['1.3.0'], promo: releases.promo['1.0.0'], reviews: releases.reviews['1.0.0'] };
 
   const server = http.createServer(async (req, res) => {
+    recordRequest(req, res);
+    try {
     const parsedUrl = new URL(req.url || '/', 'http://localhost:3000');
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method) && ((req.headers.origin && req.headers.origin !== 'http://localhost:3000' && req.headers.origin !== 'http://127.0.0.1:3000') || !req.headers['content-type']?.startsWith('application/json'))) { json(res, 403, { error: 'JSON and same origin required' }); return; }
+    if (await handleApi(req, res, parsedUrl.pathname)) return;
+    if (parsedUrl.pathname === '/__log/client' && req.method === 'POST') {
+      const entry = await bodyJson(req); clientLog.push(entry); appendLog('client-log.jsonl', entry); json(res, 201, { ok: true }); return;
+    }
+    if (parsedUrl.pathname === '/__log' && req.method === 'GET') { json(res, 200, { requests: requestLog, clients: clientLog }); return; }
+    if (parsedUrl.pathname === '/__reset' && req.method === 'POST') {
+      resetApi(); faults.clear(); requestLog.length = 0; clientLog.length = 0;
+      atomicJson(liveManifestPath, baselineManifest); json(res, 200, { ok: true }); return;
+    }
+    if (parsedUrl.pathname === '/__faults' && req.method === 'POST') {
+      const body = await bodyJson(req); const entry = new URL(body.url);
+      const key = `${entry.port}${entry.pathname}`;
+      if (body.clear) faults.delete(key); else faults.set(key, { status: body.status, delayMs: body.delayMs });
+      json(res, 200, { ok: true }); return;
+    }
 
     // 1. Phục vụ manifest.json trực tiếp với no-cache để cập nhật phiên bản ngay lập tức mà không build lại Shell
     if (parsedUrl.pathname === '/manifest.json') {
@@ -207,35 +242,30 @@ async function startShellServer() {
     }
 
     if (parsedUrl.pathname === '/__mfe_admin/deploy-cart' && req.method === 'POST') {
-      const body = await readJsonBody(req);
-      const edition = body.edition === 'v2' ? 'v2' : 'v1';
-      const versions = JSON.parse(fs.readFileSync(versionsPath, 'utf8'));
-      const currentManifest = JSON.parse(fs.readFileSync(liveManifestPath, 'utf8'));
-
-      currentManifest.cart = versions.cart[edition];
-      const serialized = JSON.stringify(currentManifest, null, 2) + '\n';
-      fs.writeFileSync(liveManifestPath, serialized);
-
-      const distManifestPath = path.join(shellDistDir, 'manifest.json');
-      if (fs.existsSync(shellDistDir)) {
-        fs.writeFileSync(distManifestPath, serialized);
-      }
-
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ edition, cartUrl: currentManifest.cart }));
+      const body = await bodyJson(req);
+      const result = deployRemote('cart', body.edition, 'admin deploy-cart');
+      json(res, result.ok ? 200 : 409, { ...result, cartUrl: result.descriptor?.url });
       return;
     }
+    if (parsedUrl.pathname === '/__mfe_admin/deploy' && req.method === 'POST') {
+      const body = await bodyJson(req); const result = deployRemote(body.name, body.version, 'admin deploy');
+      json(res, result.ok ? 200 : 409, result); return;
+    }
+    if (parsedUrl.pathname.startsWith('/__')) { json(res, 404, { error: 'Unknown lab endpoint' }); return; }
 
     serveStaticFile(req, res, shellDistDir, { isRemote: false });
+    } catch (error) { if (!res.headersSent) json(res, 400, { error: error.message }); else res.end(); }
   });
 
   await new Promise((resolve, reject) => {
     server.on('error', reject);
-    server.listen(3000, resolve);
+    server.listen(3000, '127.0.0.1', resolve);
   });
 }
 
 async function main() {
+  const failures = checkManifest(readJson(path.join(ROOT, 'shell/public/manifest.json')));
+  if (failures.length) throw new Error(JSON.stringify(failures));
   for (const cfg of REMOTE_CONFIGS) {
     if (!fs.existsSync(cfg.dir)) {
       console.error(`✗ Chưa có bản build tại ${cfg.dir}. Hãy chạy "npm run build" trước!`);

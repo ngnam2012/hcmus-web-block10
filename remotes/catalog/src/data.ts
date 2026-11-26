@@ -8,7 +8,7 @@ export interface ProductItem {
   id: string;
   code: string;
   name: string;
-  category: 'Âm thanh' | 'Bàn phím' | 'Phụ kiện' | 'Màn hình & Desk';
+  category: 'Âm thanh' | 'Bàn phím' | 'Phụ kiện' | 'Màn hình & Desk' | 'Trà';
   basePrice: number;
   initialStock: number;
   rating: number;
@@ -19,6 +19,11 @@ export interface ProductItem {
 }
 
 export const INITIAL_PRODUCTS: ProductItem[] = [
+  ...['T-02', 'T-03', 'T-04', 'T-01'].map((code, index): ProductItem => ({
+    id: code, code, name: ['Trà xanh Thái Nguyên', 'Trà sen Tây Hồ', 'Trà lài', 'Trà ô long'][index],
+    category: 'Trà', basePrice: 120_000 + index * 10_000, initialStock: 20, rating: 4.8, reviewCount: 0,
+    shortSpec: 'Trà lá nguyên chất, gói 100g', variants: [{ id: 'standard', label: '100g', priceDelta: 0 }]
+  })),
   {
     id: 'p1',
     code: 'LOGI-M350',

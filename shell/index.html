@@ -9,7 +9,8 @@
       {
         "imports": {
           "@shoplite/event-bus": "/shared/event-bus.v1.js",
-          "@shoplite/format": "/shared/format.v1.js"
+          "@shoplite/format": "/shared/format.v1.js",
+          "@shop/ds": "/shared/ds.v1.js"
         }
       }
     </script>
@@ -27,14 +28,17 @@
           </div>
 
           <div class="sl-header-actions">
-            <div class="sl-cart-pill" id="header-cart-summary">
+            <a href="/products" data-route class="sl-btn-outline">Sản phẩm</a>
+            <ds-button><a href="/cart" data-route class="sl-cart-pill btn" id="header-cart-summary">
               Giỏ hàng: <strong id="header-cart-count">0</strong> SP (<span id="header-cart-total">0 ₫</span>)
-            </div>
+            </a></ds-button>
 
             <select id="user-switcher" class="sl-header-select" aria-label="Tài khoản đăng nhập">
+              <option value="">Chọn tài khoản demo</option>
               <option value="Nguyễn Minh Anh">Tài khoản: Nguyễn Minh Anh (VIP)</option>
               <option value="Trần Quốc Tuấn">Tài khoản: Trần Quốc Tuấn (Member)</option>
             </select>
+            <button type="button" id="logout-btn" class="sl-btn-outline">Đăng xuất</button>
 
             <button type="button" id="theme-toggle-btn" class="sl-btn-outline">
               Chế độ tối
@@ -51,13 +55,13 @@
         <div class="sl-lab-inner">
           <div class="sl-lab-tabs">
             <button type="button" class="sl-lab-tab is-active" data-lab-tab="chaos">
-              Cô lập lỗi &amp; Race Condition (F3-F6)
+              Cô lập lỗi &amp; Race Condition
             </button>
             <button type="button" class="sl-lab-tab" data-lab-tab="manifest">
-              Manifest Deploy &amp; Rollback (F7-F8)
+              Manifest Deploy &amp; Rollback
             </button>
             <button type="button" class="sl-lab-tab" data-lab-tab="events">
-              Nhật ký Event Bus (F1)
+              Nhật ký Event Bus
             </button>
           </div>
 
@@ -106,6 +110,8 @@
       </section>
 
       <main class="sl-main">
+        <p id="login-notice" role="status" hidden>Chọn tài khoản demo để đăng nhập.</p>
+        <p id="route-not-found" role="status" hidden>Không tìm thấy trang. Mở Sản phẩm hoặc Giỏ hàng từ thanh điều hướng.</p>
         <section class="sl-slot-card sl-slot-full" data-slot-card="promo">
           <div class="sl-slot-header">
             <div class="sl-slot-title-group">

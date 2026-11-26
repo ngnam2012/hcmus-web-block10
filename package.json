@@ -15,10 +15,20 @@
     "gate": "node scripts/compatibility-gate.mjs",
     "start": "node scripts/start-all.mjs",
     "dev": "node scripts/build-all.mjs && node scripts/start-all.mjs",
-    "verify": "node scripts/verify-e2e.mjs"
+    "verify": "node scripts/verify-all.mjs",
+    "typecheck": "node scripts/typecheck.mjs",
+    "deploy": "node scripts/deploy.mjs",
+    "build:remote": "node scripts/build-all.mjs",
+    "check": "npm run typecheck && npm run gate",
+    "verify:http": "node scripts/verify-e2e.mjs",
+    "verify:browser": "node scripts/verify-browser.mjs"
   },
   "devDependencies": {
+    "postcss": "^8.5.33",
+    "postcss-selector-parser": "^7.2.1",
+    "semver": "^7.8.6",
     "typescript": "^5.6.3",
-    "vite": "^5.4.11"
+    "vite": "^5.4.11",
+    "vue-tsc": "^3.3.14"
   }
 }

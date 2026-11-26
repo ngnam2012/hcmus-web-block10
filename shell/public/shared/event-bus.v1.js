@@ -124,6 +124,11 @@ class ShopLiteEventBus {
   clearHistory() {
     this.history = [];
   }
+
+  clearSession() {
+    this.history = [];
+    this.lastPayloads.clear();
+  }
 }
 
 export const eventBus =

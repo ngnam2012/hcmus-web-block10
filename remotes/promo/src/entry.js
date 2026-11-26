@@ -1,4 +1,7 @@
 import App from './App.svelte';
+import '@shop/ds';
+import '@shoplite/event-bus';
+import '@shoplite/format';
 
 export function mount(container, ctx) {
   if (ctx?.chaos?.crashOnMount) {

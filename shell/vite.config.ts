@@ -3,7 +3,7 @@ import { defineConfig } from 'vite';
 export default defineConfig({
   build: {
     rollupOptions: {
-      external: ['@shoplite/event-bus', '@shoplite/format']
+      external: ['@shoplite/event-bus', '@shoplite/format', '@shop/ds']
     }
   },
   server: {

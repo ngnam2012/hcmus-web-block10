@@ -1,6 +1,8 @@
 import { createScopedBus, eventBus } from '@shoplite/event-bus';
 import { SHARED_FORMAT_VERSION, formatVND } from '@shoplite/format';
-import { loadRemote } from './loader';
+import { loadRemote, unmountSlotIfMounted, reportClient } from './loader';
+import { syncSession, cartForSession, getAccessToken } from './session';
+import '@shop/ds';
 import './styles.css';
 import type { AppContext, RemoteManifest, SlotKey, SlotRuntimeState, UserProfile } from './types';
 import { registerDesignSystemPrimitives } from './ui-primitives';
@@ -14,18 +16,16 @@ const SLOT_CONFIG: Record<SlotKey, { label: string; framework: string; port: num
   reviews: { label: 'Verified Reviews Hub', framework: 'Web Components', port: 3004 }
 };
 
-let currentManifest: RemoteManifest = {
-  promo: 'http://localhost:3003/entry.js',
-  catalog: 'http://localhost:3001/entry.js',
-  cart: 'http://localhost:3002/entry.js',
-  reviews: 'http://localhost:3004/entry.js'
-};
+let currentManifest = {} as RemoteManifest;
+let supportedContractMajors: number[] = [1];
+let routeTurn = 0;
+let sessionChanging = false;
 
 let currentTheme: 'light' | 'dark' = 'light';
 let currentUser: UserProfile = {
-  id: 'u-vip-01',
-  name: 'Nguyễn Minh Anh',
-  tier: 'VIP'
+  id: 'guest',
+  name: 'Khách',
+  tier: 'Member'
 };
 
 const slotStates = new Map<SlotKey, SlotRuntimeState>();
@@ -35,7 +35,7 @@ for (const [key, cfg] of Object.entries(SLOT_CONFIG) as Array<[SlotKey, typeof S
     label: cfg.label,
     framework: cfg.framework,
     port: cfg.port,
-    url: currentManifest[key],
+    url: '',
     turn: 0,
     status: 'loading',
     serverOnline: true
@@ -48,21 +48,15 @@ function buildContextForSlot(slot: SlotKey, crashOnMount = false): AppContext {
     user: { ...currentUser },
     locale: 'vi-VN',
     theme: currentTheme,
-    apiBaseUrl: 'http://localhost:3000/api',
+    apiBaseUrl: '/api',
     eventBus: createScopedBus(`${cfg.framework}`),
-    navigate: (path: string) => {
-      window.history.pushState({}, '', path);
-      eventBus.emit('shell:route-changed', { path }, 'App Shell');
-    },
-    getAccessToken: async () => {
-      const slug = currentUser.name.toLowerCase().replace(/\s+/g, '_');
-      return `sl_jwt_${slug}_${Date.now().toString(36)}`;
-    },
+    navigate,
+    getAccessToken,
+    cart: cartForSession(),
     chaos: crashOnMount ? { crashOnMount: true } : undefined
   });
 }
 
-const MANIFEST_OVERRIDE_KEY = 'shoplite_manifest_cart_override_v1';
 const OFFLINE_PORTS_KEY = 'shoplite_simulated_offline_ports_v1';
 
 function getSimulatedOfflinePorts(): Set<number> {
@@ -87,19 +81,13 @@ async function fetchManifest(): Promise<RemoteManifest> {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = (await res.json()) as RemoteManifest;
 
-    // Trên Vercel (không có ổ đĩa ghi đè manifest), đọc bản override deploy/rollback từ sessionStorage
-    const cartOverride = sessionStorage.getItem(MANIFEST_OVERRIDE_KEY);
-    if (cartOverride && data.cart.startsWith('/')) {
-      data.cart = cartOverride;
-    }
-
     currentManifest = data;
     const offlineSet = getSimulatedOfflinePorts();
     for (const slot of Object.keys(SLOT_CONFIG) as SlotKey[]) {
       const st = slotStates.get(slot);
       if (st && data[slot]) {
         st.serverOnline = !offlineSet.has(st.port);
-        st.url = st.serverOnline ? data[slot] : `/remotes/__offline_${st.port}__/entry.js`;
+        st.url = st.serverOnline ? data[slot].url : `/remotes/__offline_${st.port}__/entry.js`;
       }
     }
     const previewEl = document.getElementById('manifest-json-preview');
@@ -108,8 +96,8 @@ async function fetchManifest(): Promise<RemoteManifest> {
     }
     return data;
   } catch (err) {
-    console.warn('[App Shell] Không đọc được /manifest.json, dùng fallback localhost ports:', err);
-    return currentManifest;
+    reportClient('LOAD_FAILED', 'catalog', err);
+    throw err;
   }
 }
 
@@ -136,12 +124,9 @@ function appendSystemLog(source: string, eventName: string, detail: any) {
   row.className = 'sl-event-row';
   const time = new Date().toLocaleTimeString('vi-VN', { hour12: false });
   const text = typeof detail === 'string' ? detail : JSON.stringify(detail);
-  row.innerHTML = `
-    <span class="sl-event-time">${time}</span>
-    <span class="sl-event-src">${source}</span>
-    <span class="sl-event-name">${eventName}</span>
-    <span class="sl-event-payload">${text}</span>
-  `;
+  for (const [className, value] of [['sl-event-time', time], ['sl-event-src', source], ['sl-event-name', eventName], ['sl-event-payload', text]]) {
+    const span = document.createElement('span'); span.className = className; span.textContent = value; row.appendChild(span);
+  }
   stream.prepend(row);
   while (stream.children.length > 50) {
     stream.lastElementChild?.remove();
@@ -189,13 +174,13 @@ function renderChaosCards() {
               Nạp lại
             </button>
             <button type="button" class="sl-chaos-btn is-danger" data-chaos-op="timeout" data-slot="${st.slot}">
-              F4: Timeout 4.5s
+              Timeout 4.5s
             </button>
             <button type="button" class="sl-chaos-btn is-danger" data-chaos-op="crash" data-slot="${st.slot}">
-              F5: Lỗi mount()
+              Lỗi mount()
             </button>
             <button type="button" class="sl-chaos-btn" data-chaos-op="race" data-slot="${st.slot}">
-              F6: Race (5 lượt)
+              Race (5 lượt)
             </button>
             <button
               type="button"
@@ -203,7 +188,7 @@ function renderChaosCards() {
               data-chaos-op="toggle-port"
               data-slot="${st.slot}"
             >
-              ${st.serverOnline ? `F3: Ngắt cổng :${st.port}` : `Bật lại cổng :${st.port}`}
+              ${st.serverOnline ? `Ngắt cổng :${st.port}` : `Bật lại cổng :${st.port}`}
             </button>
           </div>
         </div>
@@ -227,14 +212,17 @@ async function mountSlot(
   const container = document.getElementById(`slot-${slot}`);
   const st = slotStates.get(slot);
   if (!container || !st) return;
+  if (!slotIsVisible(slot) || sessionChanging) return;
 
   const ctx = buildContextForSlot(slot, Boolean(opts.crashOnMount));
 
   await loadRemote({
     slotName: slot,
     container,
-    url: st.url,
+    descriptor: { ...currentManifest[slot], url: st.url },
     ctx,
+    supportedContractMajors,
+    retry: async () => { await fetchManifest(); await mountSlot(slot, { forceNetworkBust: true }); },
     timeoutMs: 3000,
     forceNetworkBust: opts.forceNetworkBust,
     delayMs: opts.delayMs,
@@ -274,13 +262,13 @@ async function handleChaosOperation(slot: SlotKey, op: string) {
   if (op === 'reload') {
     await mountSlot(slot, { forceNetworkBust: true });
   } else if (op === 'timeout') {
-    // Gửi tham số delay=4500ms trong khi ngưỡng Timeout của Shell là 3000ms (Kịch bản F4)
+    // Bộ nạp dừng chờ sau 3000ms.
     await mountSlot(slot, { forceNetworkBust: true, delayMs: 4500 });
   } else if (op === 'crash') {
-    // Mô phỏng ném Exception ngay bên trong hàm mount() của Remote (Kịch bản F5)
+    // Mô phỏng lỗi ngay trong mount().
     await mountSlot(slot, { forceNetworkBust: true, crashOnMount: true });
   } else if (op === 'race') {
-    // Kịch bản F6: Phát liên tiếp 5 lượt nạp với độ trễ đảo ngược để chứng minh chỉ Lượt cuối cùng được mount
+    // Chỉ lượt mới nhất được mount.
     const delays = [2100, 1500, 2400, 950, 180];
     appendSystemLog(
       'Chaos Lab',
@@ -311,7 +299,7 @@ async function handleChaosOperation(slot: SlotKey, op: string) {
       } else {
         offlineSet.delete(st.port);
         st.serverOnline = true;
-        st.url = currentManifest[slot];
+        st.url = currentManifest[slot].url;
       }
       saveSimulatedOfflinePorts(offlineSet);
     }
@@ -338,18 +326,13 @@ async function switchCartEdition(edition: 'v1' | 'v2') {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ edition })
     });
-    if (!res.ok) throw new Error('Static CDN mode');
     const data = await res.json();
+    if (!res.ok) throw new Error(JSON.stringify(data.failures || data.error || 'Deploy API unavailable'));
     newCartUrl = data.cartUrl;
-    sessionStorage.removeItem(MANIFEST_OVERRIDE_KEY);
     await fetchManifest();
-  } catch {
-    // Trên Vercel tĩnh: đọc manifest-versions.json chứa sẵn cả 2 bản băm bất biến v1 & v2 trên CDN
-    const verRes = await fetch(`/manifest-versions.json?ts=${Date.now()}`, { cache: 'no-store' });
-    const verData = await verRes.json();
-    newCartUrl = verData.cart[edition];
-    sessionStorage.setItem(MANIFEST_OVERRIDE_KEY, newCartUrl);
-    await fetchManifest();
+  } catch (error) {
+    if (msgEl) msgEl.textContent = `Không phát hành được: ${String(error)}. Cần máy chủ có API deploy và gate.`;
+    return;
   }
 
   await mountSlot('cart', { forceNetworkBust: false });
@@ -397,18 +380,13 @@ function setupShellInteractions() {
 
   // 3. Đổi tài khoản người dùng tập trung ở App Shell (Quyết định 4: Auth tập trung)
   const userSelect = document.getElementById('user-switcher') as HTMLSelectElement | null;
-  userSelect?.addEventListener('change', () => {
-    const name = userSelect.value;
-    currentUser = {
-      id: name.includes('Minh Anh') ? 'u-vip-01' : 'u-mem-02',
-      name,
-      tier: name.includes('Minh Anh') ? 'VIP' : 'Member'
-    };
-    eventBus.emit('shell:user-changed', currentUser, 'App Shell');
-    // Mount lại Reviews & Cart với ngữ cảnh user mới mượt mà
-    mountSlot('reviews');
-    mountSlot('cart');
-  });
+  userSelect?.addEventListener('change', () => { void changeUser(userSelect.value.includes('Minh Anh') ? 'u1' : 'u2'); });
+  document.getElementById('logout-btn')?.addEventListener('click', () => { void changeUser(null); });
+  document.querySelectorAll<HTMLAnchorElement>('[data-route]').forEach(link => link.addEventListener('click', event => {
+    if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey || event.button !== 0) return;
+    event.preventDefault(); navigate(link.pathname + link.search);
+  }));
+  window.addEventListener('popstate', () => { void renderRoute(); });
 
   // 4. Bật/tắt bảng Phòng thí nghiệm MFE
   const labPanel = document.getElementById('mfe-lab-panel');
@@ -432,7 +410,8 @@ function setupShellInteractions() {
   document.getElementById('btn-deploy-v2')?.addEventListener('click', () => switchCartEdition('v2'));
   document.getElementById('btn-rollback-v1')?.addEventListener('click', () => switchCartEdition('v1'));
 
-  document.getElementById('btn-reset-demo')?.addEventListener('click', () => {
+  document.getElementById('btn-reset-demo')?.addEventListener('click', async () => {
+    try { await cartForSession().resetStock(); } catch (error) { appendSystemLog('Cart API', 'reset-failed', String(error)); return; }
     eventBus.emit('warehouse:reset', {}, 'App Shell');
     appendSystemLog('App Shell', 'warehouse:reset', 'Đã khôi phục số lượng tồn kho ban đầu');
   });
@@ -445,17 +424,58 @@ function setupShellInteractions() {
 
 async function bootstrapShell() {
   setupShellInteractions();
+  const metaResponse = await fetch('/shell-meta.json', { cache: 'no-store' });
+  if (!metaResponse.ok) throw new Error('Missing shell metadata');
+  supportedContractMajors = (await metaResponse.json()).supportedContractMajors;
   await fetchManifest();
   await syncServerStatuses();
   renderChaosCards();
-
-  // Khởi chạy đồng thời cả 4 Remote thuộc 4 công nghệ khác nhau trên cùng một màn hình
-  await Promise.all([
-    mountSlot('promo'),
-    mountSlot('catalog'),
-    mountSlot('cart'),
-    mountSlot('reviews')
-  ]);
+  const user = await syncSession();
+  currentUser = user || { id: 'guest', name: 'Khách', tier: 'Member' };
+  if (location.pathname === '/') history.replaceState({}, '', '/products');
+  await renderRoute();
 }
 
-bootstrapShell();
+function slotIsVisible(slot: SlotKey) {
+  if (currentUser.id === 'guest') return false;
+  return slot === 'promo' || (location.pathname === '/products' && (slot === 'catalog' || slot === 'reviews')) || (location.pathname === '/cart' && slot === 'cart');
+}
+function navigate(path: string) {
+  const next = new URL(path, location.href);
+  if (next.origin !== location.origin) return;
+  history.pushState({}, '', next.pathname + next.search); void renderRoute();
+}
+async function renderRoute() {
+  const turn = ++routeTurn;
+  eventBus.emit('shell:route-changed', { path: location.pathname + location.search }, 'App Shell');
+  const userSelect = document.getElementById('user-switcher') as HTMLSelectElement;
+  userSelect.value = currentUser.id === 'guest' ? '' : currentUser.name;
+  document.getElementById('login-notice')!.hidden = currentUser.id !== 'guest';
+  const known = ['/products', '/cart'].includes(location.pathname);
+  document.getElementById('route-not-found')!.hidden = known;
+  const slots = Object.keys(SLOT_CONFIG) as SlotKey[];
+  await Promise.all(slots.map(async slot => {
+    const card = document.querySelector<HTMLElement>(`[data-slot-card="${slot}"]`)!;
+    const visible = known && slotIsVisible(slot); card.hidden = !visible;
+    // Invalidate before awaiting: a pending import cannot mount into a departed route.
+    await unmountSlotIfMounted(slot);
+  }));
+  if (turn !== routeTurn) return;
+  await Promise.all(slots.filter(slot => known && slotIsVisible(slot)).map(slot => mountSlot(slot)));
+}
+async function changeUser(userId: string | null) {
+  if (sessionChanging) return;
+  sessionChanging = true; ++routeTurn;
+  const select = document.getElementById('user-switcher') as HTMLSelectElement; select.disabled = true;
+  try {
+    await Promise.all((Object.keys(SLOT_CONFIG) as SlotKey[]).map(slot => unmountSlotIfMounted(slot)));
+    const user = await syncSession(userId);
+    currentUser = user || { id: 'guest', name: 'Khách', tier: 'Member' };
+    document.getElementById('event-log-stream')!.replaceChildren();
+  } catch (error) { currentUser = { id: 'guest', name: 'Khách', tier: 'Member' }; reportClient('LOAD_FAILED', 'cart', error); }
+  finally { sessionChanging = false; select.disabled = false; await renderRoute(); }
+}
+bootstrapShell().catch(error => {
+  document.getElementById('login-notice')!.hidden = false;
+  document.getElementById('login-notice')!.textContent = `Không khởi tạo được ứng dụng: ${String(error)}. Chạy npm start để dùng API phiên và giỏ hàng.`;
+});

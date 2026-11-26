@@ -1,157 +1,94 @@
-import { execSync } from 'node:child_process';
-import crypto from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { ROOT, publicDir, readJson, atomicJson, sha256, checkManifest, appendLog } from './release.mjs';
+import { buildFixtures } from './build-fixtures.mjs';
+import ts from 'typescript';
+import semver from 'semver';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const ROOT = path.resolve(__dirname, '..');
-const VITE_BIN = path.join(ROOT, 'node_modules', 'vite', 'bin', 'vite.js');
+const staticMode = process.argv.includes('--vercel') || Boolean(process.env.VERCEL);
+const selected = process.argv.find(a => a.startsWith('--remote='))?.split('=')[1];
+const requestedVersion = process.argv.find(a => a.startsWith('--version='))?.split('=')[1];
+if (requestedVersion && (!selected || !semver.valid(requestedVersion))) throw new Error('--version requires --remote and a valid semantic version');
+const shellOnly = process.argv.includes('--shell-only');
+execFileSync(process.execPath, [path.join(ROOT, 'scripts/typecheck.mjs')], { stdio: 'inherit' });
+const remotesOnly = process.argv.includes('--remotes-only') || Boolean(selected);
+const names = ['catalog', 'cart', 'promo', 'reviews'];
+if (selected && !names.includes(selected)) throw new Error('Unknown remote');
+const routes = { catalog: ['/products'], cart: ['/cart'], promo: [], reviews: [] };
+const shellMeta = { supportedContractMajors: [1], sharedDependencies: { '@shoplite/event-bus': '1.0.0', '@shoplite/format': '1.0.0', '@shop/ds': '1.0.0' }, routeOwnership: routes };
+fs.mkdirSync(publicDir, { recursive: true });
+const shellMetaPath = path.join(publicDir, 'shell-meta.json');
+// Existing metadata is authoritative when checking a shell-only release.
+if (!fs.existsSync(shellMetaPath)) atomicJson(shellMetaPath, shellMeta);
+const versionsPath = path.join(publicDir, 'manifest-versions.json');
+const existing = fs.existsSync(versionsPath) ? readJson(versionsPath) : {};
+const releases = existing.catalog?.['1.4.0']?.contractMajor ? existing : {};
+const previous = fs.existsSync(path.join(publicDir, 'manifest.json')) ? readJson(path.join(publicDir, 'manifest.json')) : {};
+const manifest = previous.catalog?.contractMajor ? previous : {};
 
-// Tự động bật chế độ 1-Vercel khi có cờ --vercel hoặc biến môi trường VERCEL=1
-const isVercelSingle = process.argv.includes('--vercel') || Boolean(process.env.VERCEL);
-const remotesOnly = process.argv.includes('--remotes-only');
-
-function runViteBuild(cwd, extraEnv = {}) {
-  console.log(`\n▶ [${path.relative(ROOT, cwd) || 'root'}] vite build`);
-  execSync(`"${process.execPath}" "${VITE_BIN}" build`, {
-    cwd,
-    stdio: 'inherit',
-    env: { ...process.env, ...extraEnv }
-  });
+function vite(name, env = {}) {
+  execFileSync(process.execPath, [path.join(ROOT, 'node_modules/vite/bin/vite.js'), 'build'], { cwd: path.join(ROOT, name), stdio: 'inherit', env: { ...process.env, ...env } });
 }
-
-function hashFile(filePath) {
-  const buf = fs.readFileSync(filePath);
-  return crypto.createHash('sha256').update(buf).digest('hex').slice(0, 8);
+export function publish(name, version, source, extra = {}) {
+  const dist = path.join(ROOT, 'remotes', name, 'dist');
+  const analysis = readJson(path.join(dist, 'build-analysis.json'));
+  const css = extra.css ?? fs.readFileSync(path.join(dist, 'remote.css'), 'utf8');
+  const code = source + `\nexport const releaseVersion = ${JSON.stringify(version)};\n`;
+  const hash = sha256(code), file = `${name}.${version}.${hash.slice(0, 8)}.js`;
+  const meta = { name, version, contractMajor: 1, sha256: hash, cssSha256: sha256(css), sharedDependencies: Object.fromEntries(Object.keys(shellMeta.sharedDependencies).map(k => [k, '^1.0.0'])), bundledPackages: analysis.bundledPackages, routes: routes[name], ...extra };
+  delete meta.css;
+  // Never overwrite an existing immutable release with different bytes.
+  const target = path.join(dist, file);
+  if (fs.existsSync(target) && fs.readFileSync(target, 'utf8') !== code) throw new Error('Immutable artifact collision');
+  fs.writeFileSync(target, code);
+  atomicJson(target.replace(/\.js$/, '.remote-meta.json'), meta);
+  const descriptor = { url: staticMode ? `/remotes/${name}/${file}` : `http://localhost:${3001 + names.indexOf(name)}/${file}`, version, contractMajor: meta.contractMajor };
+  (releases[name] ||= {})[version] = descriptor;
+  return descriptor;
 }
-
-function ensureDir(dirPath) {
-  fs.mkdirSync(dirPath, { recursive: true });
-}
-
-function copySharedModulesToShellPublic() {
-  const srcDir = path.join(ROOT, 'shared');
-  const destDir = path.join(ROOT, 'shell', 'public', 'shared');
-  ensureDir(destDir);
-  for (const file of ['event-bus.v1.js', 'format.v1.js']) {
-    fs.copyFileSync(path.join(srcDir, file), path.join(destDir, file));
+if (!shellOnly) {
+  for (const name of names.filter(n => !selected || selected === n)) {
+    vite(`remotes/${name}`, name === 'cart' ? { VITE_CART_EDITION: 'v1' } : {});
+    if (name === 'catalog') {
+      const dataSource = fs.readFileSync(path.join(ROOT, 'remotes/catalog/src/data.ts'), 'utf8');
+      const js = ts.transpileModule(dataSource, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
+      const data = await import(`data:text/javascript;base64,${Buffer.from(js).toString('base64')}`);
+      atomicJson(path.join(ROOT, 'remotes/catalog/dist/products.json'), data.INITIAL_PRODUCTS);
+    }
+    const code = fs.readFileSync(path.join(ROOT, 'remotes', name, 'dist/entry.js'), 'utf8');
+    const baseline = requestedVersion || { catalog: '1.4.0', cart: '1.3.0', promo: '1.0.0', reviews: '1.0.0' }[name];
+    const initial = publish(name, baseline, code);
+    manifest[name] ||= initial;
+    // A full build selects freshly built defaults; a selected build only stages releases.
+    if (!selected) manifest[name] = initial;
+    if (name === 'catalog' && !requestedVersion) { publish(name, '1.7.0', code); buildFixtures(name, code, publish); }
+    if (name === 'cart' && !requestedVersion) {
+      buildFixtures(name, code, publish);
+      vite('remotes/cart', { VITE_CART_EDITION: 'v2' });
+      const v2 = publish(name, '1.3.1', fs.readFileSync(path.join(ROOT, 'remotes/cart/dist/entry.js'), 'utf8'));
+      releases.cart.v1 = initial; releases.cart.v2 = v2;
+    }
   }
-  console.log('✓ Đã đồng bộ thư viện dùng chung (@shoplite/event-bus & @shoplite/format) vào shell/public/shared/');
+  atomicJson(versionsPath, releases);
 }
-
-function syncRemoteToShellPublic(name, distDir) {
-  const targetDir = path.join(ROOT, 'shell', 'public', 'remotes', name);
-  fs.rmSync(targetDir, { recursive: true, force: true });
-  ensureDir(targetDir);
-  for (const file of fs.readdirSync(distDir)) {
-    const srcFile = path.join(distDir, file);
-    if (fs.statSync(srcFile).isFile()) {
-      fs.copyFileSync(srcFile, path.join(targetDir, file));
+for (const file of ['event-bus.v1.js', 'format.v1.js', 'ds.v1.js']) {
+  fs.mkdirSync(path.join(publicDir, 'shared'), { recursive: true });
+  fs.copyFileSync(path.join(ROOT, 'shared', file), path.join(publicDir, 'shared', file));
+}
+if (staticMode) {
+  for (const name of names) {
+    const target = path.join(publicDir, 'remotes', name); fs.mkdirSync(target, { recursive: true });
+    for (const file of fs.readdirSync(path.join(ROOT, 'remotes', name, 'dist'))) {
+      if (/\.[a-f0-9]{8}\.(js|remote-meta\.json)$/.test(file)) fs.copyFileSync(path.join(ROOT, 'remotes', name, 'dist', file), path.join(target, file));
     }
   }
 }
-
-function buildStandardRemote(name, port) {
-  const remoteDir = path.join(ROOT, 'remotes', name);
-  const distDir = path.join(remoteDir, 'dist');
-  fs.rmSync(distDir, { recursive: true, force: true });
-
-  runViteBuild(remoteDir);
-
-  const entryPath = path.join(distDir, 'entry.js');
-  const hash = hashFile(entryPath);
-  const immutableName = `${name}.${hash}.js`;
-  fs.copyFileSync(entryPath, path.join(distDir, immutableName));
-
-  if (isVercelSingle) {
-    syncRemoteToShellPublic(name, distDir);
-    console.log(`✓ [${name}] Artifact bất biến (Vercel CDN): /remotes/${name}/${immutableName}`);
-    return `/remotes/${name}/${immutableName}`;
-  }
-
-  console.log(`✓ [${name}] Artifact bất biến: ${immutableName} (port :${port})`);
-  return `http://localhost:${port}/${immutableName}`;
-}
-
-function buildCartMultiEdition(port) {
-  const remoteDir = path.join(ROOT, 'remotes', 'cart');
-  const distDir = path.join(remoteDir, 'dist');
-  fs.rmSync(distDir, { recursive: true, force: true });
-  ensureDir(distDir);
-
-  // Bản v2.0 (Flash Release — thêm Gói quà VIP & VietQR preview)
-  runViteBuild(remoteDir, { VITE_CART_EDITION: 'v2' });
-  const entryPath = path.join(distDir, 'entry.js');
-  const hashV2 = hashFile(entryPath);
-  const fileV2 = `cart.v2.${hashV2}.js`;
-  fs.copyFileSync(entryPath, path.join(distDir, fileV2));
-
-  // Bản v1.0 (Bản ổn định mặc định lúc khởi tạo)
-  runViteBuild(remoteDir, { VITE_CART_EDITION: 'v1' });
-  const hashV1 = hashFile(entryPath);
-  const fileV1 = `cart.v1.${hashV1}.js`;
-  fs.copyFileSync(entryPath, path.join(distDir, fileV1));
-
-  console.log(`✓ [cart] Đã đóng gói 2 phiên bản bất biến để kiểm chứng Deploy & Rollback:`);
-  console.log(`   • v1 (mặc định): ${fileV1}`);
-  console.log(`   • v2 (nâng cấp): ${fileV2}`);
-
-  if (isVercelSingle) {
-    syncRemoteToShellPublic('cart', distDir);
-    return {
-      v1Url: `/remotes/cart/${fileV1}`,
-      v2Url: `/remotes/cart/${fileV2}`
-    };
-  }
-
-  return {
-    v1Url: `http://localhost:${port}/${fileV1}`,
-    v2Url: `http://localhost:${port}/${fileV2}`
-  };
-}
-
-if (!isVercelSingle) {
-  // Khi build chế độ Local 5 cổng thì dọn thư mục shell/public/remotes để tránh dư thừa
-  fs.rmSync(path.join(ROOT, 'shell', 'public', 'remotes'), { recursive: true, force: true });
-}
-
-copySharedModulesToShellPublic();
-
-const catalogUrl = buildStandardRemote('catalog', 3001);
-const cartVersions = buildCartMultiEdition(3002);
-const promoUrl = buildStandardRemote('promo', 3003);
-const reviewsUrl = buildStandardRemote('reviews', 3004);
-
-const manifest = {
-  catalog: catalogUrl,
-  cart: cartVersions.v1Url,
-  promo: promoUrl,
-  reviews: reviewsUrl
-};
-
-const versionsMeta = {
-  cart: {
-    v1: cartVersions.v1Url,
-    v2: cartVersions.v2Url
-  }
-};
-
-const shellPublicDir = path.join(ROOT, 'shell', 'public');
-ensureDir(shellPublicDir);
-fs.writeFileSync(path.join(shellPublicDir, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
-fs.writeFileSync(
-  path.join(shellPublicDir, 'manifest-versions.json'),
-  JSON.stringify(versionsMeta, null, 2) + '\n'
-);
-
+const failures = checkManifest(manifest);
+if (failures.length) { appendLog('deploy-log.jsonl', { command: 'build', result: 'rejected', failures }); throw new Error(JSON.stringify(failures)); }
+if (!selected && !shellOnly) atomicJson(path.join(publicDir, 'manifest.json'), manifest);
 if (!remotesOnly) {
-  runViteBuild(path.join(ROOT, 'shell'));
+  vite('shell');
+  appendLog('deploy-log.jsonl', { command: 'build shell', result: 'success', active: manifest });
 }
-
-console.log(
-  `\n🎉 Hoàn tất đóng gói hệ thống Micro Frontend ShopLite (${
-    isVercelSingle ? 'Chế độ 1-Vercel Static CDN' : 'Chế độ 5-Port Local Servers'
-  })!`
-);
-console.log(JSON.stringify(manifest, null, 2));
+console.log(selected ? `Staged ${selected}; use npm run deploy -- ${selected} <version>. Shell unchanged.` : 'Build passed G1–G6.');

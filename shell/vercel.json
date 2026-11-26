@@ -39,7 +39,7 @@
   ],
   "rewrites": [
     {
-      "source": "/((?!remotes/|shared/|assets/|manifest\\.json|manifest-versions\\.json).*)",
+      "source": "/((?!api(?:/|$)|__|remotes/|shared/|assets/|manifest\\.json|manifest-versions\\.json|shell-meta\\.json).*)",
       "destination": "/index.html"
     }
   ]

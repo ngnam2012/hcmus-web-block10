@@ -1,4 +1,7 @@
 import { ensureReviewHubDefined, ShopLiteReviewHub } from './review-hub';
+import '@shop/ds';
+import '@shoplite/event-bus';
+import '@shoplite/format';
 
 export function mount(container: HTMLElement, ctx: any) {
   if (ctx?.chaos?.crashOnMount) {

@@ -1,0 +1,20 @@
+{
+  "supportedContractMajors": [
+    1
+  ],
+  "sharedDependencies": {
+    "@shoplite/event-bus": "1.0.0",
+    "@shoplite/format": "1.0.0",
+    "@shop/ds": "1.0.0"
+  },
+  "routeOwnership": {
+    "catalog": [
+      "/products"
+    ],
+    "cart": [
+      "/cart"
+    ],
+    "promo": [],
+    "reviews": []
+  }
+}

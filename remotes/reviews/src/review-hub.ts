@@ -77,7 +77,6 @@ const SEED_REVIEWS: ReviewRecord[] = [
 ];
 
 const QUICK_TAGS = ['Đóng gói kỹ', 'Hoàn thiện tốt', 'Đáng giá tiền', 'Giao hàng nhanh'];
-const PURCHASED_STORAGE_KEY = 'shoplite_purchased_products_v1';
 const REVIEWS_STORAGE_KEY = 'shoplite_reviews_records_v1';
 
 function escapeHtml(str: string): string {
@@ -121,7 +120,7 @@ export class ShopLiteReviewHub extends HTMLElement {
     }
 
     try {
-      const savedPurchased = JSON.parse(sessionStorage.getItem(PURCHASED_STORAGE_KEY) || '[]');
+      const savedPurchased = this.ctx?.cart?.getSnapshot().purchasedIds || [];
       this.purchasedIds = new Set(savedPurchased);
     } catch {
       this.purchasedIds = new Set();
@@ -138,6 +137,7 @@ export class ShopLiteReviewHub extends HTMLElement {
 
   public setContext(ctx: any) {
     this.ctx = ctx;
+    this.loadState();
     this.cleanupListeners();
 
     this.unsubscribers.push(
@@ -650,7 +650,7 @@ export class ShopLiteReviewHub extends HTMLElement {
           ${
             this.aggressiveCssTest
               ? 'Tắt thử nghiệm CSS (Shadow DOM đang cô lập)'
-              : 'Test F2: Tiêm CSS button { background: red }'
+              : 'Thử CSS: button { background: red }'
           }
         </button>
       </div>

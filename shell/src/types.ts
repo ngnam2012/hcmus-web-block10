@@ -16,20 +16,23 @@ export interface AppContext {
   eventBus: ScopedEventBus;
   navigate: (path: string) => void;
   getAccessToken: () => Promise<string>;
+  cart: ReturnType<typeof import('./session').cartForSession>;
+  onCleanup?: (callback: () => void | Promise<void>) => void;
   chaos?: {
     crashOnMount?: boolean;
   };
 }
 
 export interface MountedRemoteHandle {
-  unmount: () => void;
+  unmount: () => void | Promise<void>;
 }
 
 export interface RemoteModuleContract {
-  mount: (container: HTMLElement, ctx: AppContext) => MountedRemoteHandle;
+  mount: (container: HTMLElement, ctx: AppContext) => MountedRemoteHandle | Promise<MountedRemoteHandle>;
 }
 
-export type RemoteManifest = Record<SlotKey, string>;
+export interface RemoteDescriptor { url: string; version: string; contractMajor: number; }
+export type RemoteManifest = Record<SlotKey, RemoteDescriptor>;
 
 export interface SlotRuntimeState {
   slot: SlotKey;

@@ -35,20 +35,7 @@ const props = defineProps<{
   edition: string;
 }>();
 
-const CART_STORAGE_KEY = 'shoplite_cart_items_v1';
-const PURCHASED_STORAGE_KEY = 'shoplite_purchased_products_v1';
-
-function loadSavedCart(): CartLineItem[] {
-  try {
-    const raw = sessionStorage.getItem(CART_STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch {
-    // ignore
-  }
-  return [];
-}
-
-const items = ref<CartLineItem[]>(loadSavedCart());
+const items = ref<CartLineItem[]>(props.ctx.cart.getSnapshot().items);
 const activeVoucher = ref<AppliedVoucher | null>(null);
 const cartWarning = ref<string>('');
 const giftWrapEnabled = ref<boolean>(false);
@@ -109,11 +96,6 @@ const finalTotal = computed(() =>
 const loyaltyPoints = computed(() => Math.floor(finalTotal.value / 10_000));
 
 function persistAndBroadcast() {
-  try {
-    sessionStorage.setItem(CART_STORAGE_KEY, JSON.stringify(items.value));
-  } catch {
-    // ignore
-  }
   props.ctx.eventBus.emit('cart:updated', {
     items: items.value.map((i) => ({ ...i })),
     totalQty: totalQty.value,
@@ -123,6 +105,8 @@ function persistAndBroadcast() {
     finalTotal: finalTotal.value
   });
 }
+
+watch([giftWrapEnabled, activeVoucher, items], persistAndBroadcast, { deep: true });
 
 watch([subtotal, totalQty], ([newSub, newQty]) => {
   const v = activeVoucher.value;
@@ -147,7 +131,7 @@ function getTotalQtyForProduct(productId: string) {
     .reduce((acc, item) => acc + item.qty, 0);
 }
 
-function changeQty(sku: string, delta: number) {
+async function changeQty(sku: string, delta: number) {
   cartWarning.value = '';
   const target = items.value.find((i) => i.sku === sku);
   if (!target) return;
@@ -160,22 +144,18 @@ function changeQty(sku: string, delta: number) {
     }
   }
 
-  target.qty += delta;
-  if (target.qty <= 0) {
-    items.value = items.value.filter((i) => i.sku !== sku);
-  }
-  persistAndBroadcast();
+  try { await props.ctx.cart.adjustQuantity(sku, delta); }
+  catch (error) { cartWarning.value = String(error); }
 }
 
-function removeItem(sku: string) {
+async function removeItem(sku: string) {
   cartWarning.value = '';
-  items.value = items.value.filter((i) => i.sku !== sku);
-  persistAndBroadcast();
+  try { await props.ctx.cart.quantity(sku, 0); } catch (error) { cartWarning.value = String(error); }
 }
 
-function clearCart() {
+async function clearCart() {
   cartWarning.value = '';
-  items.value = [];
+  try { await props.ctx.cart.clear(); } catch (error) { cartWarning.value = String(error); return; }
   activeVoucher.value = null;
   showCheckoutForm.value = false;
   props.ctx.eventBus.emit('promo:removed', {});
@@ -183,6 +163,7 @@ function clearCart() {
 }
 
 async function submitCheckout() {
+  if (isSubmitting.value) return;
   formError.value = '';
   if (items.value.length === 0) return;
 
@@ -210,13 +191,7 @@ async function submitCheckout() {
     const finalSnapshot = finalTotal.value;
     const countSnapshot = totalQty.value;
 
-    try {
-      const prevIds: string[] = JSON.parse(sessionStorage.getItem(PURCHASED_STORAGE_KEY) || '[]');
-      const merged = Array.from(new Set([...prevIds, ...purchasedSnapshot.map((i) => i.productId)]));
-      sessionStorage.setItem(PURCHASED_STORAGE_KEY, JSON.stringify(merged));
-    } catch {
-      // ignore
-    }
+    await props.ctx.cart.checkout();
 
     lastReceipt.value = {
       orderCode,
@@ -241,6 +216,8 @@ async function submitCheckout() {
     giftWrapEnabled.value = false;
     showCheckoutForm.value = false;
     persistAndBroadcast();
+  } catch (error) {
+    formError.value = String(error);
   } finally {
     isSubmitting.value = false;
   }
@@ -252,35 +229,8 @@ onMounted(() => {
   persistAndBroadcast();
 
   unsubscribers.push(
-    props.ctx.eventBus.on('cart:add', (payload: any) => {
-      cartWarning.value = '';
-      lastReceipt.value = null;
-
-      const unitPrice = Number(payload.unitPrice ?? payload.price ?? 0);
-      const maxStock = Number(payload.maxStock ?? 99);
-      const currentProductQty = getTotalQtyForProduct(payload.productId);
-
-      if (currentProductQty + 1 > maxStock) {
-        cartWarning.value = `Không thể thêm: "${payload.name}" đã đạt giới hạn tồn kho (${maxStock}).`;
-        return;
-      }
-
-      const existing = items.value.find((i) => i.sku === payload.sku);
-      if (existing) {
-        existing.qty += 1;
-        existing.unitPrice = unitPrice;
-        existing.maxStock = maxStock;
-      } else {
-        items.value.push({
-          sku: payload.sku,
-          productId: payload.productId,
-          name: payload.name,
-          variantLabel: payload.variantLabel || 'Tiêu chuẩn',
-          unitPrice,
-          qty: 1,
-          maxStock
-        });
-      }
+    props.ctx.eventBus.on('cart:state', (payload: any) => {
+      items.value = payload.items.map((item: CartLineItem) => ({ ...item }));
       persistAndBroadcast();
     })
   );
@@ -346,7 +296,7 @@ onUnmounted(() => {
 
     <div v-if="items.length === 0" class="cart-empty">
       <p>Chưa có sản phẩm trong giỏ hàng</p>
-      <small>Chọn sản phẩm từ danh mục bên trái để thêm vào đơn hàng.</small>
+      <small>Mở trang Sản phẩm để thêm vào giỏ.</small>
     </div>
 
     <template v-else>

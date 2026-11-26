@@ -1,37 +1,24 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
+import type { AppContext } from '../../../shell/src/types';
 import { formatVND } from '@shoplite/format';
 import { INITIAL_PRODUCTS, ProductItem } from './data';
 import './catalog.css';
 
-interface AppProps {
-  ctx: {
-    eventBus: {
-      on: (event: string, handler: (payload: any) => void, opts?: { replay?: boolean }) => () => void;
-      emit: (event: string, payload?: any) => void;
-    };
-  };
-}
+interface AppProps { ctx: AppContext; }
 
-const CATEGORIES = ['Tất cả', 'Âm thanh', 'Bàn phím', 'Phụ kiện', 'Màn hình & Desk'] as const;
-const STOCK_STORAGE_KEY = 'shoplite_warehouse_stock_v1';
-
-function loadPersistedWarehouseStock(): Record<string, number> {
-  try {
-    const raw = sessionStorage.getItem(STOCK_STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch {
-    // ignore storage errors
-  }
-  const initial: Record<string, number> = {};
-  for (const p of INITIAL_PRODUCTS) {
-    initial[p.id] = p.initialStock;
-  }
-  return initial;
-}
-
+const CATEGORIES = ['Tất cả', 'Âm thanh', 'Bàn phím', 'Phụ kiện', 'Màn hình & Desk', 'Trà'] as const;
+const CATEGORY_KEYS = ['all', 'audio', 'keyboard', 'accessories', 'desk', 'tea'];
 export default function App({ ctx }: AppProps) {
+  const query = new URLSearchParams(location.search);
+  const rawPage = Number(query.get('page'));
+  const page = Number.isFinite(rawPage) ? Math.max(1, Math.floor(rawPage)) : 1;
+  const feedbackTimer = useRef<ReturnType<typeof setTimeout>>();
+  const alive = useRef(true);
+  const [addError, setAddError] = useState('');
+  const [adding, setAdding] = useState(false);
+  useEffect(() => () => { alive.current = false; clearTimeout(feedbackTimer.current); }, []);
   const [products, setProducts] = useState<ProductItem[]>(INITIAL_PRODUCTS);
-  const [warehouseStock, setWarehouseStock] = useState<Record<string, number>>(loadPersistedWarehouseStock);
+  const [warehouseStock, setWarehouseStock] = useState<Record<string, number>>(() => ctx.cart.getSnapshot().stock);
   const [reservedByProduct, setReservedByProduct] = useState<Record<string, number>>({});
   const [selectedVariants, setSelectedVariants] = useState<Record<string, string>>(() => {
     const map: Record<string, string> = {};
@@ -42,7 +29,12 @@ export default function App({ ctx }: AppProps) {
   });
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeCategory, setActiveCategory] = useState<string>('Tất cả');
+  const activeCategory = CATEGORIES[Math.max(0, CATEGORY_KEYS.indexOf(query.get('category') || 'all'))];
+  const navigateFilter = (category: string, nextPage = 1) => {
+    const next = new URLSearchParams(location.search);
+    next.set('category', CATEGORY_KEYS[CATEGORIES.indexOf(category as typeof CATEGORIES[number])]); next.set('page', String(nextPage));
+    ctx.navigate(`/products?${next}`);
+  };
   const [maxPriceFilter, setMaxPriceFilter] = useState<number>(2_500_000);
   const [sortBy, setSortBy] = useState<'popular' | 'price-asc' | 'price-desc' | 'rating'>('popular');
   const [selectedProductId, setSelectedProductId] = useState<string>('p1');
@@ -80,11 +72,6 @@ export default function App({ ctx }: AppProps) {
           const current = updated[item.productId] ?? 0;
           updated[item.productId] = Math.max(0, current - Number(item.qty || 0));
         }
-        try {
-          sessionStorage.setItem(STOCK_STORAGE_KEY, JSON.stringify(updated));
-        } catch {
-          // ignore
-        }
         return updated;
       });
       setReservedByProduct({});
@@ -104,7 +91,6 @@ export default function App({ ctx }: AppProps) {
     const unsubResetStock = ctx.eventBus.on('warehouse:reset', () => {
       const fresh: Record<string, number> = {};
       for (const p of INITIAL_PRODUCTS) fresh[p.id] = p.initialStock;
-      sessionStorage.removeItem(STOCK_STORAGE_KEY);
       setWarehouseStock(fresh);
     });
 
@@ -148,7 +134,7 @@ export default function App({ ctx }: AppProps) {
     return sorted;
   }, [products, searchQuery, activeCategory, maxPriceFilter, sortBy, selectedVariants]);
 
-  const handleAddToCart = (product: ProductItem) => {
+  const handleAddToCart = async (product: ProductItem) => {
     const totalStock = warehouseStock[product.id] ?? product.initialStock;
     const reserved = reservedByProduct[product.id] || 0;
     if (totalStock - reserved <= 0) return;
@@ -157,7 +143,8 @@ export default function App({ ctx }: AppProps) {
     const unitPrice = product.basePrice + variant.priceDelta;
     const sku = `${product.id}__${variant.id}`;
 
-    ctx.eventBus.emit('cart:add', {
+    setAddError(''); setAdding(true);
+    try { await ctx.cart.add({
       sku,
       productId: product.id,
       code: product.code,
@@ -170,10 +157,14 @@ export default function App({ ctx }: AppProps) {
       maxStock: totalStock
     });
 
+    if (!alive.current) return;
     setJustAddedId(product.id);
-    setTimeout(() => {
+    clearTimeout(feedbackTimer.current);
+    feedbackTimer.current = setTimeout(() => {
       setJustAddedId((curr) => (curr === product.id ? null : curr));
     }, 650);
+    } catch (error) { if (alive.current) setAddError(String(error)); }
+    finally { if (alive.current) setAdding(false); }
   };
 
   const handleInspectReviews = (product: ProductItem) => {
@@ -232,7 +223,7 @@ export default function App({ ctx }: AppProps) {
             key={cat}
             type="button"
             className={`catalog-cat-btn ${activeCategory === cat ? 'is-active' : ''}`}
-            onClick={() => setActiveCategory(cat)}
+            onClick={() => navigateFilter(cat)}
           >
             {cat}
           </button>
@@ -245,6 +236,7 @@ export default function App({ ctx }: AppProps) {
         </span>
         <span>Tồn kho đồng bộ trực tiếp với Giỏ hàng</span>
       </div>
+      {addError && <p role="alert">{addError}</p>}
 
       {filteredProducts.length === 0 ? (
         <div className="catalog-empty">
@@ -254,7 +246,7 @@ export default function App({ ctx }: AppProps) {
             className="catalog-review-link"
             onClick={() => {
               setSearchQuery('');
-              setActiveCategory('Tất cả');
+              navigateFilter('Tất cả');
               setMaxPriceFilter(2_500_000);
             }}
           >
@@ -263,7 +255,7 @@ export default function App({ ctx }: AppProps) {
         </div>
       ) : (
         <div className="catalog-grid">
-          {filteredProducts.map((product) => {
+          {filteredProducts.slice((Math.min(page, Math.ceil(filteredProducts.length / 3)) - 1) * 3, Math.min(page, Math.ceil(filteredProducts.length / 3)) * 3).map((product) => {
             const totalStock = warehouseStock[product.id] ?? product.initialStock;
             const reserved = reservedByProduct[product.id] || 0;
             const available = Math.max(0, totalStock - reserved);
@@ -338,7 +330,7 @@ export default function App({ ctx }: AppProps) {
                   <button
                     type="button"
                     className="catalog-add-btn"
-                    disabled={available === 0}
+                    disabled={available === 0 || adding}
                     onClick={() => handleAddToCart(product)}
                   >
                     {justAddedId === product.id
@@ -353,6 +345,9 @@ export default function App({ ctx }: AppProps) {
           })}
         </div>
       )}
+      <nav aria-label="Trang sản phẩm" className="catalog-pages">
+        {Array.from({ length: Math.ceil(filteredProducts.length / 3) }, (_, i) => <button type="button" key={i} aria-current={page === i + 1 ? 'page' : undefined} onClick={() => navigateFilter(activeCategory, i + 1)}>Trang {i + 1}</button>)}
+      </nav>
     </div>
   );
 }

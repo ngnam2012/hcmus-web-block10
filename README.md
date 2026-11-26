@@ -1,53 +1,93 @@
-# ShopLite - Kiến Trúc Micro Frontend Đa Công Nghệ
+# ShopLite — Micro Frontends / Block 10
 
-Dự án xây dựng một màn hình thống nhất ghép từ **4 công nghệ Frontend độc lập** (React 18, Vue 3, Svelte 4, Web Components), tích hợp xử lý nghiệp vụ đa chiều, cô lập lỗi (Fault Isolation) và triển khai độc lập (Independent Deployment).
+ShopLite ghép Shell TypeScript với Catalog React 18, Cart Vue 3, Promo Svelte 4 và Reviews Web Components. Yêu cầu và mã H0/F1–F8 dùng theo [slide Block 10](https://pub.nndkhoa9.win/webadv/w9/block-10-micro-frontends-interactive.html#pl-codes). Đây là bản triển khai riêng, không phải starter của giảng viên.
 
----
+## Chạy local
 
-## 1. Kiến trúc hệ thống
+Yêu cầu Node.js 22+, npm và Chrome/Chromium để kiểm thử trình duyệt.
 
-| Thành phần | Công nghệ | Cổng | Vai trò & Xử lý nghiệp vụ |
-| :--- | :--- | :---: | :--- |
-| **App Shell** (`shell/`) | **Vanilla TypeScript + Vite** | `:3000` | Điều phối Layout, Auth tập trung (`getAccessToken`), đổi chế độ Sáng/Tối qua CSS Custom Properties, nạp `<script type="importmap">`, điều phối `manifest.json`, bộ nạp an toàn (**Timeout + Fallback + Generation Token**) và Bảng kiểm thử MFE (F1-F8). |
-| **Remote 1 - Catalog** (`remotes/catalog/`) | **React 18** | `:3001` | Tìm kiếm, lọc theo danh mục & mức giá, sắp xếp sản phẩm, tính giá động theo phiên bản, đồng bộ tồn kho hai chiều với Vue Cart, áp dụng mẫu **Expand-Contract** (`unitPrice` + `price`), cập nhật điểm đánh giá từ Reviews. |
-| **Remote 2 - Cart & Checkout** (`remotes/cart/`) | **Vue 3 (SFC Scoped)** | `:3002` | Quản lý giỏ hàng theo giới hạn tồn kho, tự động áp dụng/thu hồi mã giảm giá khi giỏ thay đổi, tính phí vận chuyển, thuế VAT 8%, kiểm tra hợp lệ biểu mẫu đặt hàng, tích hợp sẵn 2 bản build bất biến (`v1.0` & `v2.0`). |
-| **Remote 3 - Promo Engine** (`remotes/promo/`) | **Svelte 4** | `:3003` | Tính tiến độ miễn phí vận chuyển (`1.500.000 ₫`) & mốc VIP (`3.000.000 ₫`), giải mã coupon nhập tay (`SHOPLITE20`), ví Voucher kiểm tra điều kiện và tự động chọn mã có mức giảm tối ưu nhất. |
-| **Remote 4 - Reviews Hub** (`remotes/reviews/`) | **Web Components (Shadow DOM)** | `:3004` | Custom Element `<sl-review-hub>` đóng gói trong **Shadow DOM**, đồng bộ theo sản phẩm chọn bên React, thống kê tỷ lệ 5-1 sao, đối chiếu đơn hàng đã mua để gắn nhãn *Đã mua hàng*, lọc nhận xét và thử nghiệm cô lập CSS. |
-| **Shared Runtime** (`shared/`) | **Native ES Modules (Import Map)** | `/shared/*` | `@shoplite/event-bus` và `@shoplite/format` được trình duyệt phân giải về 1 singleton duy nhất qua `<script type="importmap">`. |
-
----
-
-## 2. Cài đặt và chạy tại máy (5 cổng độc lập)
-
-```bash
+```sh
 npm install
 npm run build
-npm run gate
 npm start
 ```
 
-Mở trình duyệt tại: `http://localhost:3000`
+Mở `http://localhost:3000`, chọn tài khoản demo u1 (Nguyễn Minh Anh) hoặc u2 (Trần Quốc Tuấn). `/products?category=tea&page=2` hiển thị Trà, trang 2, sản phẩm T-01. `/cart`, back và forward do Shell điều phối. Đây là đăng nhập và checkout mô phỏng; không tích hợp nhà cung cấp danh tính hay cổng thanh toán.
 
-Kiểm thử tích hợp tự động qua dòng lệnh: `npm run verify`
+| Thành phần | Cổng | Trách nhiệm |
+|---|---:|---|
+| Shell + API Node | 3000 | Route, phiên đăng nhập, badge, loader, manifest và deploy gate |
+| Catalog / React | 3001 | Sản phẩm, query category/page, thêm giỏ qua API và phản hồi sau xác nhận |
+| Cart / Vue | 3002 | Giỏ hàng, voucher, phí gói quà, biểu mẫu checkout |
+| Promo / Svelte | 3003 | Tiến độ và voucher |
+| Reviews / Shadow DOM | 3004 | Nhận xét, trạng thái đã mua theo tài khoản, thử cô lập CSS |
 
----
+Các máy chủ chỉ bind loopback `127.0.0.1`. Dữ liệu giỏ, lịch sử mua và tồn kho lưu ở `.data/carts.json`; phiên có thời hạn được giữ trên server. Cart API lấy người dùng từ phiên/token hợp lệ, không lấy từ `userId` trong query hoặc payload.
 
-## 3. Triển khai lên Vercel (1 Project)
+## Contract và vòng đời
 
-Dự án đã cấu hình sẵn `vercel.json` và `shell/vercel.json`:
-- Khi Import repo lên Vercel, chọn `shell` (hoặc thư mục gốc `./`) và bấm **Deploy**.
-- Quá trình build tự động đóng gói cả 4 Remote vào `/remotes/<tên>/<tên>.<hash>.js` và xuất ra `shell/dist`.
+Manifest chứa `{ url, version, contractMajor }` cho mỗi remote. Shell đọc manifest bằng `cache: 'no-store'` khi khởi động và retry, kiểm tra major trước import, giới hạn chờ import 3 giây, và dùng generation token theo slot/route để bỏ kết quả muộn. Retry có URL attempt mới để thử lại cả những import đã thất bại trong module cache của trình duyệt.
 
----
+Remote export `mount(container, ctx)` và trả về `{ unmount() }`; `unmount` có thể trả Promise. Context cung cấp bản sao user, locale/theme, `navigate`, `getAccessToken`, Cart API facade, event bus và `onCleanup`. Shell chờ cleanup của route cũ trước khi mount route mới. Loader quản lý subscription theo mount; remote vẫn có trách nhiệm hủy framework instance, timer và tài nguyên do chính nó tạo.
 
-## 4. Kịch bản kiểm chứng (F1-F8)
+CSS được build thành dữ liệu export `remoteStyles`, với selector nằm dưới `[data-remote="<tên>"]`. Import hoàn tất muộn không tự chèn style. Loader chỉ gắn style khi mount và xóa khi unmount hoặc mount lỗi. Reviews dùng thêm Shadow DOM. `@shoplite/event-bus`, `@shoplite/format`, `@shop/ds` là external và được phân giải một lần qua import map.
 
-Bấm nút **Bảng kiểm thử MFE** trên thanh tiêu đề để kiểm tra trực tiếp:
-1. **F1 - Tương tác đa công nghệ:** Chọn phiên bản & thêm hàng ở React -> Svelte cập nhật thanh tiến độ & tự chọn mã giảm giá -> Đặt hàng ở Vue -> Viết nhận xét ở Web Components -> Điểm trung bình trên React tự cập nhật.
-2. **F2 - Cô lập CSS (Shadow DOM):** Bấm nút `Test F2: Tiêm CSS button { background: red }` ở khung Đánh giá -> Chỉ nút bên trong Shadow DOM đổi màu đỏ, giao diện React, Vue, Svelte và Shell giữ nguyên.
-3. **F3 - Ngắt kết nối cục bộ (Fault Isolation):** Ngắt cổng `:3003` -> Khung Khuyến mãi hiện thông báo dự phòng (Fallback UI), các phần còn lại vẫn mua hàng bình thường.
-4. **F4 - Timeout (3 giây):** Mô phỏng phản hồi chậm 4.5s -> Shell tự ngắt ở 3000ms và hiện Fallback UI.
-5. **F5 - Lỗi Runtime trong `mount()`:** Ném ngoại lệ khi khởi tạo -> Chỉ khung đó hiển thị Fallback UI, không làm trắng toàn trang.
-6. **F6 - Chống Race Condition (Generation Token):** Phát 5 lượt tải liên tiếp với độ trễ khác nhau -> Chỉ lượt mới nhất được phép render, các lượt cũ về muộn bị loại bỏ.
-7. **F7 - Independent Deployment:** Bấm `Deploy Cart v2.0` -> Cập nhật `manifest.json` sang `cart.v2.<hash>.js` mà không build lại Shell và giữ nguyên sản phẩm trong giỏ.
-8. **F8 - Instant Rollback:** Bấm `Rollback về Cart v1.0` -> Khôi phục ngay bản `cart.v1.<hash>.js`.
+Mã lỗi: `LOAD_FAILED`, `TIMEOUT`, `MOUNT_ERROR`, `INVALID_MODULE`, `INCOMPATIBLE`. Lượt cũ có log `LATE_IGNORED`. Fallback có mã và nút thử lại trong đúng slot; lỗi được POST tới `/__log/client`.
+
+## Build/deploy riêng và rollback
+
+Build luôn chạy typecheck, gồm `vue-tsc`, và kiểm tra G1–G6 trước khi chọn manifest. Artifact đã build giữ tên chứa SHA-256, không dọn dist cũ. Metadata nằm cạnh mỗi entry: `<tên>.<version>.<hash>.remote-meta.json`.
+
+```sh
+# Chỉ stage Catalog mới; shell và manifest đang chạy giữ nguyên.
+node scripts/build-all.mjs --remote=catalog --version=1.8.0
+
+# Gate rồi atomically đổi manifest dùng chung.
+node scripts/deploy.mjs catalog 1.8.0
+
+# Rollback qua cùng gate.
+node scripts/deploy.mjs catalog 1.4.0
+
+# Chỉ build shell, kiểm tra chiều ngược với tất cả remote đang chạy.
+node scripts/build-all.mjs --shell-only
+```
+
+G1 kiểm tra file/meta/hash/export; G2 contract major; G3 semver shared; G4 danh sách package từ Rollup và import external; G5 route ownership; G6 phân tích selector/CSS lấy trực tiếp từ artifact. Gate đọc artifact được manifest chọn, không đọc bản `entry.js` mutable. API deploy và CLI cùng gọi gate, từ chối sẽ giữ nguyên manifest. Manifest được ghi file tạm rồi rename; mọi lần deploy hoặc rollback đều ghi kết quả vào `.data/deploy-log.jsonl`.
+
+Tab đang mở giữ module hiện có. Tab mới hoặc reload đọc manifest hiện hành. Việc thay contract major, import map/shared runtime hoặc khả năng Shell cung cấp đòi hỏi cập nhật Shell tương thích; không thể giải quyết bằng đổi URL remote.
+
+## Kiểm chứng
+
+```sh
+npm run typecheck
+npm run gate
+npm run verify
+```
+
+`verify` chạy gate với artifact lỗi, HTTP/API, rồi Chrome với assertion DOM, console, network và log. Có thể chạy riêng `npm run verify:http` hoặc `npm run verify:browser`. Nếu Chrome không nằm ở đường dẫn mặc định, đặt `CHROME_BIN` tới executable.
+
+| Mã slide | Kiểm tra tự động |
+|---|---|
+| H0 | Đăng nhập u1, tea/page=2/T-01, badge, Cart, back giữ query; console sạch, mỗi entry một request |
+| F1 | Catalog 404, `LOAD_FAILED`, phần còn lại hoạt động; retry đọc manifest và request entry mới |
+| F2 | Catalog trễ 10 giây, timeout giây 3, sang Cart giây 4, không mount muộn và có `LATE_IGNORED` |
+| F3 | Catalog 1.5.0 vẽ dở rồi throw; xóa DOM dở và style, `MOUNT_ERROR` |
+| F4 | Cart 2.0.0 bị G2 từ chối; ghi manifest thủ công vẫn bị chặn trước request entry |
+| F5 | Cart 1.4.0 có DS riêng bị G4 từ chối; bypass gây lỗi được cô lập; 1.4.1 chỉ tải DS một lần |
+| F6 | Catalog 1.6.0 bị G6 từ chối; so computed style ở ba thời điểm với bản lỗi và bản sửa 1.6.1 |
+| F7 | Cart 1.5.0/1.5.1: 5 vòng route rồi thêm thật qua Cart API, handlerCalls >1/1; history/logout/u1/u2 |
+| F8 | Ba tab trước deploy/sau deploy/sau rollback Catalog 1.7.0→1.4.0; cùng hash Shell, Cart giữ 1.3.0 và có deploy log |
+
+Fixture được tạo lại từ `scripts/build-fixtures.mjs`; bản không tương thích chỉ được stage. Kiểm tra bypass sửa manifest trong môi trường test và luôn khôi phục file ban đầu. Test dùng kho dữ liệu riêng trong `.audit/test-runtime-*`, không dùng `.data/carts.json` của người chạy.
+
+Sau khi chạy kiểm thử, kết quả được tạo ở `.audit/revision-gate-results.json`, `.audit/revision-http-results.json` và `.audit/revision-browser-results.json`. Thư mục `.audit` chứa dữ liệu local và không được commit vào repository.
+
+Máy chủ thực hành có `POST /__faults`, `GET /__log`, `POST /__log/client`, `POST /__reset` và API quản trị trên loopback. `__reset` trở về H0, xóa session, giỏ, tồn kho và fault của môi trường đang chạy.
+
+## Giới hạn triển khai
+
+`npm run build:vercel` đóng gói artifact vào `shell/dist/remotes` để phục vụ cùng origin. **Static Vercel đơn thuần không cung cấp Session/Cart API, log hoặc cập nhật manifest dùng chung.** Cần triển khai backend tương ứng và proxy cùng origin để có đầy đủ hành vi; ứng dụng báo rõ khi thiếu API. Nút deploy không còn giả vờ phát hành bằng sessionStorage.
+
+Giữ artifact trong dist bảo đảm rollback qua các lần build **trên cùng kho local**. Với CI mới hoặc hosting ngoài máy, cần khôi phục các artifact đã phát hành từ kho lưu trữ bền vững trước khi build/publish. Chưa triển khai hoặc kiểm chứng một Vercel deployment thực trong đợt này.
+
+Kiến trúc nhiều framework phù hợp mục tiêu học về ranh giới triển khai và vòng đời. Đổi lại có nhiều runtime, bundle và quy trình vận hành. Với nhóm nhỏ cùng nhịp phát hành, modular monolith sẽ đơn giản hơn; chia micro frontends hữu ích khi các nhóm thật sự cần phát hành độc lập.

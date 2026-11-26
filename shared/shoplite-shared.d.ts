@@ -20,11 +20,14 @@ declare module '@shoplite/event-bus' {
     subscribeMonitor: (fn: (entry: EventHistoryEntry) => void) => () => void;
     getHistory: () => EventHistoryEntry[];
     clearHistory: () => void;
+    clearSession: () => void;
   }
 
   export const eventBus: RootEventBus;
   export function createScopedBus(sourceName: string): ScopedEventBus;
 }
+
+declare module '@shop/ds' { export const DS_VERSION: string; }
 
 declare module '@shoplite/format' {
   export const SHARED_FORMAT_VERSION: string;

@@ -566,3 +566,6 @@ body {
   font-weight: 600;
   cursor: pointer;
 }
+[hidden] { display: none !important; }
+.sl-workspace-grid:has(> [hidden]) { grid-template-columns: minmax(0, 1fr); }
+.sl-header-actions a { text-decoration: none; color: inherit; }

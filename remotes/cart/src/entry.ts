@@ -1,4 +1,7 @@
 import { createApp, App as VueApp } from 'vue';
+import '@shop/ds';
+import '@shoplite/event-bus';
+import '@shoplite/format';
 import App from './App.vue';
 
 const EDITION = (import.meta as any).env?.VITE_CART_EDITION || 'v1';

@@ -6,3 +6,7 @@ remotes/*/dist/
 .vercel/
 *.log
 .DS_Store
+.data/
+.audit/
+.vscode/
+REVIEW-BLOCK10.md

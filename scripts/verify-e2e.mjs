@@ -1,130 +1,63 @@
-/**
- * Kịch bản kiểm thử tích hợp tự động đầu-cuối (End-to-End Architecture Verification)
- * Khởi chạy toàn bộ 5 server, kiểm tra HTTP headers, CORS, Immutable Cache, Import Map,
- * Manifest Deploy v2 / Instant Rollback v1, Timeout simulation và Server-down simulation.
- */
-import { spawn } from 'node:child_process';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const ROOT = path.resolve(__dirname, '..');
-
-async function sleep(ms) {
-  return new Promise((r) => setTimeout(r, ms));
-}
-
-async function waitForServer(url, maxWaitMs = 8000) {
-  const start = Date.now();
-  while (Date.now() - start < maxWaitMs) {
-    try {
-      const res = await fetch(url);
-      if (res.ok) return true;
-    } catch {
-      // retry
+import { testServer, request } from './test-support.mjs';
+import { ROOT, publicDir, readJson, atomicJson, manifestPath } from './release.mjs';
+const server = await testServer(), results = [];
+async function test(name, fn) { const evidence = await fn(); results.push({ name, passed: true, evidence }); console.log('✓ ' + name); }
+try {
+  await request('/__reset', {});
+  await test('HTTP: import map, CORS, immutable cache, no-store manifest, missing JS 404', async () => {
+    const html = await (await fetch('http://localhost:3000')).text();
+    assert(html.includes('"@shop/ds"')); assert(html.includes('<script type="importmap">'));
+    const response = await fetch('http://localhost:3000/manifest.json'); assert(response.headers.get('cache-control').includes('no-store'));
+    const manifest = await response.json();
+    for (const descriptor of Object.values(manifest)) {
+      const remote = await fetch(descriptor.url); assert.equal(remote.status, 200); assert.equal(remote.headers.get('access-control-allow-origin'), '*'); assert(remote.headers.get('cache-control').includes('immutable'));
     }
-    await sleep(200);
-  }
-  throw new Error(`Không thể kết nối tới ${url} sau ${maxWaitMs}ms`);
-}
-
-async function runVerification() {
-  console.log('▶ Khởi động cụm 5 server MFE để kiểm thử tự động...');
-  const proc = spawn(process.execPath, [path.join(ROOT, 'scripts', 'start-all.mjs')], {
-    cwd: ROOT,
-    stdio: 'pipe'
+    assert.equal((await fetch('http://localhost:3000/remotes/missing.js')).status, 404);
+    assert.equal((await request('/api/not-found')).status, 404);
+    assert.equal((await request('/api/cart/v1')).status, 401);
   });
-
-  try {
-    await waitForServer('http://localhost:3000');
-    await waitForServer('http://localhost:3001/health');
-    await waitForServer('http://localhost:3002/health');
-    await waitForServer('http://localhost:3003/health');
-    await waitForServer('http://localhost:3004/health');
-    console.log('✓ Cả 5 server (:3000 Shell + :3001..:3004 Remotes) đều phản hồi ONLINE.');
-
-    // 1. Kiểm tra HTML Shell & Import Map
-    const shellHtml = await (await fetch('http://localhost:3000')).text();
-    assert(shellHtml.includes('<script type="importmap">'), 'Shell phải chứa <script type="importmap">');
-    assert(shellHtml.includes('@shoplite/event-bus'), 'Import map phải ánh xạ @shoplite/event-bus');
-    console.log('✓ App Shell chứa Import Map hợp lệ và 4 slot giao diện.');
-
-    // 2. Kiểm tra Manifest no-cache & Immutable Artifacts
-    const manifestRes = await fetch('http://localhost:3000/manifest.json');
-    assert(
-      manifestRes.headers.get('cache-control')?.includes('no-cache'),
-      'manifest.json phải cấu hình no-cache'
-    );
-    const manifest = await manifestRes.json();
-
-    for (const [slot, url] of Object.entries(manifest)) {
-      const assetRes = await fetch(url);
-      assert.equal(assetRes.status, 200, `Artifact của ${slot} tại ${url} phải trả về 200`);
-      assert.equal(
-        assetRes.headers.get('access-control-allow-origin'),
-        '*',
-        `Remote ${slot} phải bật CORS`
-      );
-      assert(
-        assetRes.headers.get('cache-control')?.includes('immutable'),
-        `Artifact ${url} phải có Cache-Control immutable`
-      );
-    }
-    console.log('✓ Tất cả 4 Remote trả về ES Module bất biến (Cache-Control: immutable + CORS *).');
-
-    // 3. Kiểm chứng F7 (Deploy Cart v2) & F8 (Instant Rollback Cart v1)
-    const v1Url = manifest.cart;
-    const deployRes = await fetch('http://localhost:3000/__mfe_admin/deploy-cart', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ edition: 'v2' })
-    });
-    const deployData = await deployRes.json();
-    assert(deployData.cartUrl.includes('cart.v2.'), 'Deploy v2 phải trỏ sang cart.v2.<hash>.js');
-
-    const manifestAfterDeploy = await (await fetch('http://localhost:3000/manifest.json')).json();
-    assert.equal(manifestAfterDeploy.cart, deployData.cartUrl);
-
-    const rollbackRes = await fetch('http://localhost:3000/__mfe_admin/deploy-cart', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ edition: 'v1' })
-    });
-    const rollbackData = await rollbackRes.json();
-    assert.equal(rollbackData.cartUrl, v1Url, 'Rollback phải khôi phục chính xác URL bất biến của v1');
-    console.log('✓ Kiểm chứng F7 (Independent Deploy v2) & F8 (Instant Rollback v1) thành công.');
-
-    // 4. Kiểm chứng F3 (Tắt/bật cổng server Remote độc lập)
-    await fetch('http://localhost:3000/__mfe_admin/toggle-port', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ port: 3003, action: 'stop' })
-    });
-    let port3003Down = false;
+  await test('Session ownership: u1/u2 carts and purchases, revoked token, logout', async () => {
+    const u1 = (await request('/api/session', { userId: 'u1' })).data.accessToken;
+    assert.equal((await request('/api/cart/v1', { op: 'add', productId: 'T-01', variantId: 'standard' }, 'POST', u1)).status, 200);
+    const increments = await Promise.all([1, 2].map(() => request('/api/cart/v1', { op: 'adjust', sku: 'T-01__standard', delta: 1 }, 'POST', u1)));
+    assert(increments.every(r => r.status === 200));
+    assert.equal((await request('/api/cart/v1', undefined, 'GET', u1)).data.items[0].qty, 3);
+    const u2 = (await request('/api/session', { userId: 'u2' })).data.accessToken;
+    assert.deepEqual((await request('/api/cart/v1?userId=u1', undefined, 'GET', u2)).data.items, []);
+    await request('/api/cart/v1', { op: 'checkout' }, 'POST', u1);
+    assert.deepEqual((await request('/api/cart/v1', undefined, 'GET', u1)).data.purchasedIds, ['T-01']);
+    assert.deepEqual((await request('/api/cart/v1', undefined, 'GET', u2)).data.purchasedIds, []);
+    await request('/api/session', undefined, 'DELETE', u1);
+    assert.equal((await request('/api/cart/v1', undefined, 'GET', u1)).status, 401);
+  });
+  await test('Deploy API rejects missing artifact and incompatible releases without changing manifest', async () => {
+    const before = fs.readFileSync(manifestPath, 'utf8');
+    const versionFile = path.join(publicDir, 'manifest-versions.json'), bytes = fs.readFileSync(versionFile);
     try {
-      await fetch('http://localhost:3003/health');
-    } catch {
-      port3003Down = true;
-    }
-    assert(port3003Down, 'Cổng :3003 phải thực sự ngắt kết nối khi mô phỏng sập server');
-
-    // Bật lại cổng :3003
-    await fetch('http://localhost:3000/__mfe_admin/toggle-port', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ port: 3003, action: 'start' })
-    });
-    await waitForServer('http://localhost:3003/health');
-    console.log('✓ Kiểm chứng F3 (Tắt và khôi phục cổng :3003 độc lập không ảnh hưởng các cổng khác) thành công.');
-
-    console.log('\n🎉 TOÀN BỘ KỊCH BẢN KIẾN TRÚC MICRO FRONTEND ĐẠT 100%!');
-  } finally {
-    proc.kill();
-  }
-}
-
-runVerification().catch((err) => {
-  console.error('✗ Kiểm thử thất bại:', err);
-  process.exit(1);
-});
+      const versions = JSON.parse(bytes); versions.cart.missing = { ...versions.cart.v2, url: 'http://localhost:3002/cart.missing.00000000.js' }; atomicJson(versionFile, versions);
+      for (const version of ['missing', '2.0.0', '1.4.0']) {
+        const response = await request('/__mfe_admin/deploy', { name: 'cart', version }); assert.equal(response.status, 409); assert.equal(fs.readFileSync(manifestPath, 'utf8'), before);
+      }
+    } finally { fs.writeFileSync(versionFile, bytes); }
+    const log = fs.readFileSync(path.join(server.runtime, 'deploy-log.jsonl'), 'utf8').trim().split('\n').map(JSON.parse);
+    assert.equal(log.filter(x => x.result === 'rejected').length, 3); return log;
+  });
+  await test('Deploy/rollback preserves shell bytes and retained artifacts', async () => {
+    const htmlBefore = fs.readFileSync(path.join(ROOT, 'shell/dist/index.html'));
+    assert.equal((await request('/__mfe_admin/deploy-cart', { edition: 'v2' })).status, 200);
+    assert.equal(readJson(manifestPath).cart.version, '1.3.1');
+    assert.equal((await request('/__mfe_admin/deploy-cart', { edition: 'v1' })).status, 200);
+    assert.equal(readJson(manifestPath).cart.version, '1.3.0'); assert.deepEqual(fs.readFileSync(path.join(ROOT, 'shell/dist/index.html')), htmlBefore);
+  });
+  await test('Independent remote stop/recovery', async () => {
+    await request('/__mfe_admin/toggle-port', { port: 3003, action: 'stop' });
+    await assert.rejects(fetch('http://localhost:3003/health'));
+    assert.equal((await fetch('http://localhost:3001/health')).status, 200);
+    await request('/__mfe_admin/toggle-port', { port: 3003, action: 'start' });
+    assert.equal((await fetch('http://localhost:3003/health')).status, 200);
+  });
+} catch (error) { results.push({ passed: false, error: error.stack }); throw error; }
+finally { fs.writeFileSync(path.join(ROOT, '.audit/revision-http-results.json'), JSON.stringify(results, null, 2)); await server.close(); }
