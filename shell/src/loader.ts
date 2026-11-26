@@ -1,4 +1,5 @@
 import type { AppContext, MountedRemoteHandle, RemoteDescriptor, SlotKey } from './types';
+import { isBrowserDemo, logDemoClient } from './runtime';
 
 type ErrorCode = 'LOAD_FAILED' | 'TIMEOUT' | 'MOUNT_ERROR' | 'INVALID_MODULE' | 'INCOMPATIBLE';
 const turns = new Map<SlotKey, number>();
@@ -9,6 +10,7 @@ function serial<T>(slot: SlotKey, work: () => Promise<T>): Promise<T> {
   queues.set(slot, next.catch(() => {})); return next;
 }
 export function reportClient(code: string, slot: SlotKey, detail: unknown, turn?: number) {
+  if (isBrowserDemo) { logDemoClient({ code, slot, detail: String(detail), turn, route: location.pathname + location.search }); return; }
   void fetch('/__log/client', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code, slot, detail: String(detail), turn, route: location.pathname + location.search }), keepalive: true }).catch(() => {});
 }
 async function cleanup(slot: SlotKey) {
@@ -50,7 +52,9 @@ export async function loadRemote(options: LoadRemoteOptions) {
     container.replaceChildren(loading); notify('loading');
     if (!descriptor || !options.supportedContractMajors.includes(descriptor.contractMajor)) throw new RemoteError('INCOMPATIBLE', 'Shell không hỗ trợ contract major của remote.');
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const modulePromise = import(/* @vite-ignore */ url.href);
+    const modulePromise = isBrowserDemo && options.delayMs
+      ? new Promise(resolve => setTimeout(resolve, options.delayMs)).then(() => import(/* @vite-ignore */ url.href))
+      : import(/* @vite-ignore */ url.href);
     void modulePromise.then(() => { if (expired || !current()) late(); }, () => { if (expired || !current()) late(); });
     let mod: any;
     try {

@@ -1,6 +1,7 @@
 import { eventBus } from '@shoplite/event-bus';
 import { BASE_SHIPPING_FEE, FREESHIP_THRESHOLD, VAT_RATE } from '@shoplite/format';
 import type { UserProfile } from './types';
+import { isBrowserDemo } from './runtime';
 
 let accessToken = '';
 let user: UserProfile | null = null;
@@ -8,6 +9,7 @@ let snapshot: { items: any[]; purchasedIds: string[]; stock: Record<string, numb
 let epoch = 0;
 let mutations: Promise<unknown> = Promise.resolve();
 export async function api(path: string, method = 'GET', body?: unknown) {
+  if (isBrowserDemo) return (await import('./browser-demo')).demoApi(path, method, body);
   const response = await fetch(path, { method, credentials: 'same-origin', cache: 'no-store', headers: { 'Content-Type': 'application/json', ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) });
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);

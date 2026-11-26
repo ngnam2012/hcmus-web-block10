@@ -569,3 +569,4 @@ body {
 [hidden] { display: none !important; }
 .sl-workspace-grid:has(> [hidden]) { grid-template-columns: minmax(0, 1fr); }
 .sl-header-actions a { text-decoration: none; color: inherit; }
+.sl-demo-notice { padding: 12px 16px; background: var(--sl-surface-subtle); color: var(--sl-text-primary); border-left: 3px solid var(--sl-primary); }

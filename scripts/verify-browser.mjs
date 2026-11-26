@@ -100,7 +100,7 @@ try {
     await bad.route('/products'); await mounted(bad, 'catalog');
     assert.equal(await bad.eval(`customElements.get('ds-button') && document.querySelector('ds-button').dataset.dsVersion`), '1.0.0');
     await deploy('cart', '1.4.1'); const fixed = await chrome.open('/cart'); await mounted(fixed, 'cart');
-    const dsRequests = fixed.events.filter(e => e.method === 'Network.requestWillBeSent' && e.params.request.url.endsWith('/shared/ds.v1.js')).length;
+    const dsRequests = fixed.events.filter(e => e.method === 'Network.requestWillBeSent' && /\/shared\/ds\.v1\.[a-f0-9]{8}\.js$/.test(e.params.request.url)).length;
     assert.equal(dsRequests, 1); assert.equal(fixed.events.filter(e => e.method === 'Runtime.exceptionThrown').length, 0);
     return { consoleErrors: errors, fixedDSRequests: dsRequests };
   });

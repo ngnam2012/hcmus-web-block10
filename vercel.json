@@ -6,6 +6,10 @@
   "outputDirectory": "shell/dist",
   "headers": [
     {
+      "source": "/demo/(.*)",
+      "headers": [{ "key": "Cache-Control", "value": "no-store, no-cache, must-revalidate" }]
+    },
+    {
       "source": "/manifest.json",
       "headers": [
         {
@@ -32,14 +36,14 @@
       "headers": [
         {
           "key": "Cache-Control",
-          "value": "public, max-age=86400"
+          "value": "no-store, no-cache, must-revalidate"
         }
       ]
     }
   ],
   "rewrites": [
     {
-      "source": "/((?!api(?:/|$)|__|remotes/|shared/|assets/|manifest\\.json|manifest-versions\\.json|shell-meta\\.json).*)",
+      "source": "/((?!api(?:/|$)|__|remotes/|shared/|assets/|demo/|manifest\\.json|manifest-versions\\.json|shell-meta\\.json).*)",
       "destination": "/index.html"
     }
   ]

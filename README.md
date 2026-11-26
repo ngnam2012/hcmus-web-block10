@@ -30,7 +30,7 @@ Manifest chứa `{ url, version, contractMajor }` cho mỗi remote. Shell đọc
 
 Remote export `mount(container, ctx)` và trả về `{ unmount() }`; `unmount` có thể trả Promise. Context cung cấp bản sao user, locale/theme, `navigate`, `getAccessToken`, Cart API facade, event bus và `onCleanup`. Shell chờ cleanup của route cũ trước khi mount route mới. Loader quản lý subscription theo mount; remote vẫn có trách nhiệm hủy framework instance, timer và tài nguyên do chính nó tạo.
 
-CSS được build thành dữ liệu export `remoteStyles`, với selector nằm dưới `[data-remote="<tên>"]`. Import hoàn tất muộn không tự chèn style. Loader chỉ gắn style khi mount và xóa khi unmount hoặc mount lỗi. Reviews dùng thêm Shadow DOM. `@shoplite/event-bus`, `@shoplite/format`, `@shop/ds` là external và được phân giải một lần qua import map.
+CSS được build thành dữ liệu export `remoteStyles`, với selector nằm dưới `[data-remote="<tên>"]`. Import hoàn tất muộn không tự chèn style. Loader chỉ gắn style khi mount và xóa khi unmount hoặc mount lỗi. Reviews dùng thêm Shadow DOM. `@shoplite/event-bus`, `@shoplite/format`, `@shop/ds` là external và được phân giải một lần qua import map. Import map trong bản build trỏ đến tên shared asset có SHA-256, ví dụ `event-bus.v1.<hash>.js`, để shell mới không dùng nhầm thư viện cũ trong cache.
 
 Mã lỗi: `LOAD_FAILED`, `TIMEOUT`, `MOUNT_ERROR`, `INVALID_MODULE`, `INCOMPATIBLE`. Lượt cũ có log `LATE_IGNORED`. Fallback có mã và nút thử lại trong đúng slot; lỗi được POST tới `/__log/client`.
 
@@ -62,6 +62,9 @@ Tab đang mở giữ module hiện có. Tab mới hoặc reload đọc manifest 
 npm run typecheck
 npm run gate
 npm run verify
+
+# Kiểm chứng riêng bản Vercel không có backend, gồm trường hợp cache EventBus cũ.
+npm run verify:static
 ```
 
 `verify` chạy gate với artifact lỗi, HTTP/API, rồi Chrome với assertion DOM, console, network và log. Có thể chạy riêng `npm run verify:http` hoặc `npm run verify:browser`. Nếu Chrome không nằm ở đường dẫn mặc định, đặt `CHROME_BIN` tới executable.
@@ -84,9 +87,19 @@ Sau khi chạy kiểm thử, kết quả được tạo ở `.audit/revision-gat
 
 Máy chủ thực hành có `POST /__faults`, `GET /__log`, `POST /__log/client`, `POST /__reset` và API quản trị trên loopback. `__reset` trở về H0, xóa session, giỏ, tồn kho và fault của môi trường đang chạy.
 
+## Demo trên Vercel
+
+`npm run build:vercel` đóng gói artifact vào `shell/dist/remotes` và bật chế độ **browser demo**. Cấu hình này dùng được khi Vercel chọn thư mục gốc hoặc `shell`. Bản demo mở sẵn tài khoản u1 ở lần truy cập đầu; đổi tài khoản, đăng xuất và reload đều giữ đúng trạng thái. Giỏ và lịch sử mua được lưu trong localStorage với khóa riêng cho u1/u2, phiên đang chọn nằm trong sessionStorage của từng tab. Tồn kho demo được dùng chung trên trình duyệt đó. Dữ liệu không đồng bộ sang thiết bị khác.
+
+Chế độ này không gọi `/api/session`, `/api/cart/v1` hay API quản trị. Nút “Thử Cart v2” chỉ thay giao diện trong tab đang mở, giữ nguyên giỏ; thông báo nói rõ đây là bản demo. Các nút timeout, ngắt remote và log lỗi cũng hoạt động trong trình duyệt. Đây là mô phỏng học tập, không phải xác thực hay phát hành dùng chung trên server.
+
+`npm run build` / `npm start` vẫn dùng Session/Cart API phía server và gate/deploy thật trong môi trường local. Chế độ server không tự chuyển sang lưu trên trình duyệt khi API lỗi.
+
+`npm run verify:static` build bản Vercel, phục vụ bằng HTTP chỉ có file tĩnh, và kiểm tra Chrome với cache bật. Test nạp EventBus cũ thiếu `clearSession`, sau đó mở shell mới để xác nhận URL có hash tránh cache cũ; tiếp tục kiểm tra giỏ u1/u2, reload/logout, Cart v2, checkout, lịch sử mua, timeout và không gửi request tới backend thiếu. Sau test, source manifest và build shell trở về chế độ server local.
+
 ## Giới hạn triển khai
 
-`npm run build:vercel` đóng gói artifact vào `shell/dist/remotes` để phục vụ cùng origin. **Static Vercel đơn thuần không cung cấp Session/Cart API, log hoặc cập nhật manifest dùng chung.** Cần triển khai backend tương ứng và proxy cùng origin để có đầy đủ hành vi; ứng dụng báo rõ khi thiếu API. Nút deploy không còn giả vờ phát hành bằng sessionStorage.
+Để có xác thực thật, dữ liệu nhiều thiết bị, client/deploy log tập trung và phát hành remote dùng chung trên Vercel, cần backend cùng kho dữ liệu bền vững. Browser demo không thay thế các thành phần này. Bản export static được kiểm tra bằng Chrome trên HTTP local; kiểm chứng deployment Vercel thực cần URL deployment.
 
 Giữ artifact trong dist bảo đảm rollback qua các lần build **trên cùng kho local**. Với CI mới hoặc hosting ngoài máy, cần khôi phục các artifact đã phát hành từ kho lưu trữ bền vững trước khi build/publish. Chưa triển khai hoặc kiểm chứng một Vercel deployment thực trong đợt này.
 

@@ -10,3 +10,5 @@ remotes/*/dist/
 .audit/
 .vscode/
 REVIEW-BLOCK10.md
+shell/public/shared/*.????????.js
+shell/public/demo/

@@ -76,7 +76,7 @@
             <div class="sl-manifest-layout">
               <div>
                 <h4>Chuyển đổi phiên bản qua <code>manifest.json</code> (Không build lại Shell)</h4>
-                <p class="sl-lab-hint">
+                <p class="sl-lab-hint" id="manifest-help">
                   Hai bản build độc lập <code>cart.v1.&lt;hash&gt;.js</code> và <code>cart.v2.&lt;hash&gt;.js</code> được lưu song song. Cập nhật manifest sẽ thay đổi giao diện Giỏ hàng mà vẫn giữ nguyên dữ liệu hiện có.
                 </p>
                 <div class="sl-manifest-btns">
@@ -110,6 +110,7 @@
       </section>
 
       <main class="sl-main">
+        <p id="browser-demo-notice" class="sl-demo-notice" role="status" hidden>Bản demo — giỏ hàng và lịch sử mua được lưu riêng theo tài khoản trên trình duyệt này. Bạn có thể đổi tài khoản để mua thử.</p>
         <p id="login-notice" role="status" hidden>Chọn tài khoản demo để đăng nhập.</p>
         <p id="route-not-found" role="status" hidden>Không tìm thấy trang. Mở Sản phẩm hoặc Giỏ hàng từ thanh điều hướng.</p>
         <section class="sl-slot-card sl-slot-full" data-slot-card="promo">

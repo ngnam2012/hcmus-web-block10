@@ -21,7 +21,8 @@
     "build:remote": "node scripts/build-all.mjs",
     "check": "npm run typecheck && npm run gate",
     "verify:http": "node scripts/verify-e2e.mjs",
-    "verify:browser": "node scripts/verify-browser.mjs"
+    "verify:browser": "node scripts/verify-browser.mjs",
+    "verify:static": "node scripts/verify-static.mjs"
   },
   "devDependencies": {
     "postcss": "^8.5.33",

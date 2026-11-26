@@ -29,7 +29,8 @@ class CDP {
   async route(pathname) { await this.eval(`document.querySelector('[data-route][href="${pathname}"]').click()`); }
   close() { this.ws.close(); }
 }
-export async function browser() {
+export async function browser(options = {}) {
+  const origin = options.origin || 'http://localhost:3000';
   const executable = process.env.CHROME_BIN || ['C:/Program Files/Google/Chrome/Application/chrome.exe', 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe', '/usr/bin/google-chrome', '/usr/bin/chromium', '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'].find(p => fs.existsSync(p));
   if (!executable) throw new Error('Set CHROME_BIN to an installed Chrome/Chromium executable.');
   const profile = path.join(ROOT, '.audit', `chrome-profile-${process.pid}`); fs.mkdirSync(profile, { recursive: true });
@@ -45,12 +46,12 @@ export async function browser() {
       const c = new CDP(target.webSocketDebuggerUrl); pages.push(c);
       await c.call('Page.enable'); await c.call('Runtime.enable'); await c.call('Network.enable'); await c.call('Log.enable');
       // Each fault case must hit the server; ES module caching within a page is retained.
-      await c.call('Network.setCacheDisabled', { cacheDisabled: true });
+      await c.call('Network.setCacheDisabled', { cacheDisabled: options.cacheDisabled !== false });
       if (login) {
         const token = (await request('/api/session', { userId: 'u1' })).data.accessToken;
         await c.call('Network.setCookie', { name: 'shoplite_session', value: token, domain: 'localhost', path: '/', httpOnly: true, sameSite: 'Strict' });
       }
-      await c.call('Page.navigate', { url: 'http://localhost:3000' + pathname });
+      await c.call('Page.navigate', { url: origin + pathname });
       return c;
     },
     async close() {

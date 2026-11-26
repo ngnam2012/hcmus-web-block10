@@ -5,6 +5,7 @@ import { ROOT, publicDir, readJson, atomicJson, sha256, checkManifest, appendLog
 import { buildFixtures } from './build-fixtures.mjs';
 import ts from 'typescript';
 import semver from 'semver';
+import { prepareSharedAssets } from './shared-assets.mjs';
 
 const staticMode = process.argv.includes('--vercel') || Boolean(process.env.VERCEL);
 const selected = process.argv.find(a => a.startsWith('--remote='))?.split('=')[1];
@@ -72,11 +73,9 @@ if (!shellOnly) {
   }
   atomicJson(versionsPath, releases);
 }
-for (const file of ['event-bus.v1.js', 'format.v1.js', 'ds.v1.js']) {
-  fs.mkdirSync(path.join(publicDir, 'shared'), { recursive: true });
-  fs.copyFileSync(path.join(ROOT, 'shared', file), path.join(publicDir, 'shared', file));
-}
+prepareSharedAssets();
 if (staticMode) {
+  atomicJson(path.join(publicDir, 'demo/products.json'), readJson(path.join(ROOT, 'remotes/catalog/dist/products.json')));
   for (const name of names) {
     const target = path.join(publicDir, 'remotes', name); fs.mkdirSync(target, { recursive: true });
     for (const file of fs.readdirSync(path.join(ROOT, 'remotes', name, 'dist'))) {
@@ -88,7 +87,7 @@ const failures = checkManifest(manifest);
 if (failures.length) { appendLog('deploy-log.jsonl', { command: 'build', result: 'rejected', failures }); throw new Error(JSON.stringify(failures)); }
 if (!selected && !shellOnly) atomicJson(path.join(publicDir, 'manifest.json'), manifest);
 if (!remotesOnly) {
-  vite('shell');
+  vite('shell', { SHOPLITE_RUNTIME_MODE: staticMode ? 'browser-demo' : 'server' });
   appendLog('deploy-log.jsonl', { command: 'build shell', result: 'success', active: manifest });
 }
 console.log(selected ? `Staged ${selected}; use npm run deploy -- ${selected} <version>. Shell unchanged.` : 'Build passed G1–G6.');

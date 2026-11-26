@@ -2,6 +2,7 @@ import { createScopedBus, eventBus } from '@shoplite/event-bus';
 import { SHARED_FORMAT_VERSION, formatVND } from '@shoplite/format';
 import { loadRemote, unmountSlotIfMounted, reportClient } from './loader';
 import { syncSession, cartForSession, getAccessToken } from './session';
+import { isBrowserDemo } from './runtime';
 import '@shop/ds';
 import './styles.css';
 import type { AppContext, RemoteManifest, SlotKey, SlotRuntimeState, UserProfile } from './types';
@@ -58,6 +59,7 @@ function buildContextForSlot(slot: SlotKey, crashOnMount = false): AppContext {
 }
 
 const OFFLINE_PORTS_KEY = 'shoplite_simulated_offline_ports_v1';
+const DEMO_CART_EDITION_KEY = 'shoplite.demo.cart-edition.v1';
 
 function getSimulatedOfflinePorts(): Set<number> {
   try {
@@ -80,6 +82,15 @@ async function fetchManifest(): Promise<RemoteManifest> {
     const res = await fetch(`/manifest.json?ts=${Date.now()}`, { cache: 'no-store' });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = (await res.json()) as RemoteManifest;
+    const edition = isBrowserDemo ? sessionStorage.getItem(DEMO_CART_EDITION_KEY) : null;
+    if (edition === 'v1' || edition === 'v2') {
+      const versionsResponse = await fetch('/manifest-versions.json', { cache: 'no-store' });
+      if (!versionsResponse.ok) throw new Error('Không tải được danh sách phiên bản demo.');
+      const versions = await versionsResponse.json();
+      const descriptor = versions.cart?.[edition];
+      if (!descriptor || descriptor.contractMajor !== 1 || !descriptor.url?.startsWith('/remotes/cart/')) throw new Error('Phiên bản Cart demo không hợp lệ.');
+      data.cart = descriptor;
+    }
 
     currentManifest = data;
     const offlineSet = getSimulatedOfflinePorts();
@@ -102,6 +113,7 @@ async function fetchManifest(): Promise<RemoteManifest> {
 }
 
 async function syncServerStatuses() {
+  if (isBrowserDemo) return;
   try {
     const res = await fetch('/__mfe_admin/status', { cache: 'no-store' });
     if (!res.ok) return;
@@ -280,28 +292,22 @@ async function handleChaosOperation(slot: SlotKey, op: string) {
     });
   } else if (op === 'toggle-port') {
     const nextAction = st.serverOnline ? 'stop' : 'start';
-    try {
+    if (isBrowserDemo) {
+      const offlineSet = getSimulatedOfflinePorts();
+      if (nextAction === 'stop') { offlineSet.add(st.port); st.serverOnline = false; st.url = `/remotes/__offline_${st.port}__/entry.js`; }
+      else { offlineSet.delete(st.port); st.serverOnline = true; st.url = currentManifest[slot].url; }
+      saveSimulatedOfflinePorts(offlineSet);
+    } else try {
       const res = await fetch('/__mfe_admin/toggle-port', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ port: st.port, action: nextAction })
       });
-      if (!res.ok) throw new Error('Static CDN mode');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const result = await res.json();
       st.serverOnline = Boolean(result.online);
-    } catch {
-      // Tương thích hoàn toàn khi chạy trên 1 project Vercel tĩnh: cô lập đường dẫn Remote đó sang URL offline
-      const offlineSet = getSimulatedOfflinePorts();
-      if (nextAction === 'stop') {
-        offlineSet.add(st.port);
-        st.serverOnline = false;
-        st.url = `/remotes/__offline_${st.port}__/entry.js`;
-      } else {
-        offlineSet.delete(st.port);
-        st.serverOnline = true;
-        st.url = currentManifest[slot].url;
-      }
-      saveSimulatedOfflinePorts(offlineSet);
+    } catch (error) {
+      appendSystemLog('Server Admin', 'toggle-port-failed', String(error)); return;
     }
 
     renderChaosCards();
@@ -319,6 +325,19 @@ async function handleChaosOperation(slot: SlotKey, op: string) {
 async function switchCartEdition(edition: 'v1' | 'v2') {
   const msgEl = document.getElementById('manifest-status-msg');
   let newCartUrl = '';
+  if (isBrowserDemo) {
+    const previous = sessionStorage.getItem(DEMO_CART_EDITION_KEY);
+    try {
+      sessionStorage.setItem(DEMO_CART_EDITION_KEY, edition);
+      await fetchManifest(); await mountSlot('cart');
+      if (msgEl) msgEl.textContent = `Đã chọn Cart ${edition} cho tab demo này. Giỏ hàng được giữ nguyên.`;
+      appendSystemLog('Browser Demo', `preview:cart-${edition}`, currentManifest.cart.url);
+    } catch (error) {
+      if (previous) sessionStorage.setItem(DEMO_CART_EDITION_KEY, previous); else sessionStorage.removeItem(DEMO_CART_EDITION_KEY);
+      if (msgEl) msgEl.textContent = `Không đổi được bản demo: ${String(error)}`;
+    }
+    return;
+  }
 
   try {
     const res = await fetch('/__mfe_admin/deploy-cart', {
@@ -424,6 +443,12 @@ function setupShellInteractions() {
 
 async function bootstrapShell() {
   setupShellInteractions();
+  if (isBrowserDemo) {
+    document.getElementById('browser-demo-notice')!.hidden = false;
+    document.getElementById('btn-deploy-v2')!.textContent = 'Thử Cart v2';
+    document.getElementById('btn-rollback-v1')!.textContent = 'Về Cart v1';
+    document.getElementById('manifest-help')!.textContent = 'Thử hai giao diện Cart trong tab này; giỏ hàng lưu riêng theo tài khoản trên trình duyệt.';
+  }
   const metaResponse = await fetch('/shell-meta.json', { cache: 'no-store' });
   if (!metaResponse.ok) throw new Error('Missing shell metadata');
   supportedContractMajors = (await metaResponse.json()).supportedContractMajors;
@@ -477,5 +502,7 @@ async function changeUser(userId: string | null) {
 }
 bootstrapShell().catch(error => {
   document.getElementById('login-notice')!.hidden = false;
-  document.getElementById('login-notice')!.textContent = `Không khởi tạo được ứng dụng: ${String(error)}. Chạy npm start để dùng API phiên và giỏ hàng.`;
+  document.getElementById('login-notice')!.textContent = isBrowserDemo
+    ? `Không tải được bản demo: ${String(error)}. Hãy tải lại trang và cho phép lưu dữ liệu của trang.`
+    : `Không khởi tạo được ứng dụng: ${String(error)}. Chạy npm start để dùng API phiên và giỏ hàng.`;
 });
