@@ -1,0 +1,6 @@
+{
+  "catalog": "http://localhost:3001/catalog.53ec8be9.js",
+  "cart": "http://localhost:3002/cart.v1.a785c4f4.js",
+  "promo": "http://localhost:3003/promo.ebb57802.js",
+  "reviews": "http://localhost:3004/reviews.dbbf7082.js"
+}

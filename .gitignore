@@ -1,0 +1,8 @@
+node_modules/
+dist/
+shell/dist/
+shell/public/remotes/
+remotes/*/dist/
+.vercel/
+*.log
+.DS_Store
