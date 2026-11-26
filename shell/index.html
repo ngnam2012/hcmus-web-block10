@@ -3,9 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ShopLite — Kiến trúc Micro Frontend Đa Công Nghệ (React + Vue + Svelte + Web Components)</title>
+    <title>ShopLite - Micro Frontend (React, Vue, Svelte, Web Components)</title>
 
-    <!-- Quyết định 5: Import Map chuẩn trình duyệt chia sẻ thư viện trung lập xuyên 4 công nghệ -->
     <script type="importmap">
       {
         "imports": {
@@ -17,93 +16,88 @@
   </head>
   <body>
     <div id="shell-app">
-      <!-- Header trung tâm do App Shell quản lý (Auth, Theme, Route, Lab Toggle) -->
       <header class="sl-header">
         <div class="sl-header-inner">
           <div class="sl-brand">
-            <div class="sl-logo">🛍️</div>
+            <div class="sl-logo">SL</div>
             <div>
-              <h1>ShopLite <span>Polyglot MFE</span></h1>
-              <p>1 Màn hình • 4 Công nghệ độc lập (React 18 • Vue 3 • Svelte 4 • Web Components)</p>
+              <h1>ShopLite <span>Micro Frontend</span></h1>
+              <p>React 18 &middot; Vue 3 &middot; Svelte 4 &middot; Web Components</p>
             </div>
           </div>
 
           <div class="sl-header-actions">
-            <div class="sl-cart-pill" id="header-cart-summary" title="Đồng bộ thời gian thực qua Event Bus">
-              🛒 <strong id="header-cart-count">0</strong> món • <span id="header-cart-total">0 ₫</span>
+            <div class="sl-cart-pill" id="header-cart-summary">
+              Giỏ hàng: <strong id="header-cart-count">0</strong> SP (<span id="header-cart-total">0 ₫</span>)
             </div>
 
             <select id="user-switcher" class="sl-header-select" aria-label="Tài khoản đăng nhập">
-              <option value="Nguyễn Minh Anh">👤 Nguyễn Minh Anh (VIP)</option>
-              <option value="Trần Quốc Tuấn">👤 Trần Quốc Tuấn (Member)</option>
+              <option value="Nguyễn Minh Anh">Tài khoản: Nguyễn Minh Anh (VIP)</option>
+              <option value="Trần Quốc Tuấn">Tài khoản: Trần Quốc Tuấn (Member)</option>
             </select>
 
             <button type="button" id="theme-toggle-btn" class="sl-btn-outline">
-              🌙 Giao diện Tối
+              Chế độ tối
             </button>
 
             <button type="button" id="lab-toggle-btn" class="sl-btn-lab">
-              🔬 Phòng Thí Nghiệm MFE (F1–F8)
+              Bảng kiểm thử MFE
             </button>
           </div>
         </div>
       </header>
 
-      <!-- Bảng điều khiển Kiểm chứng Kiến trúc MFE (F1 -> F8) -->
-      <section id="mfe-lab-panel" class="sl-lab-panel">
+      <section id="mfe-lab-panel" class="sl-lab-panel is-hidden">
         <div class="sl-lab-inner">
           <div class="sl-lab-tabs">
             <button type="button" class="sl-lab-tab is-active" data-lab-tab="chaos">
-              🛡️ Fault Isolation &amp; Race Condition (F3–F6)
+              Cô lập lỗi &amp; Race Condition (F3-F6)
             </button>
             <button type="button" class="sl-lab-tab" data-lab-tab="manifest">
-              🚀 Manifest Deploy &amp; Instant Rollback (F7–F8)
+              Manifest Deploy &amp; Rollback (F7-F8)
             </button>
             <button type="button" class="sl-lab-tab" data-lab-tab="events">
-              📡 Live Event Bus &amp; Generation Log (F1)
+              Nhật ký Event Bus (F1)
             </button>
           </div>
 
-          <!-- Tab 1: Chaos & Fault Isolation -->
           <div class="sl-lab-pane is-active" id="lab-pane-chaos">
             <p class="sl-lab-hint">
-              Kiểm chứng nguyên tắc <strong>Lỗi cục bộ không kéo sập toàn trang</strong>: thử ngắt cổng server riêng lẻ, gây Timeout &gt; 3000ms, ném lỗi trong <code>mount()</code> hoặc bấm tải liên tiếp để xem <strong>Generation Token</strong> chặn Race Condition.
+              Kiểm tra ranh giới lỗi: ngắt cổng server riêng lẻ, tạo độ trễ quá 3000ms, ném lỗi trong <code>mount()</code> hoặc phát 5 lượt tải liên tiếp để kiểm tra Generation Token.
             </p>
             <div id="chaos-slots-grid" class="sl-chaos-grid"></div>
           </div>
 
-          <!-- Tab 2: Manifest Independent Deployment & Instant Rollback -->
           <div class="sl-lab-pane" id="lab-pane-manifest">
             <div class="sl-manifest-layout">
               <div>
-                <h4>Điều phối phiên bản độc lập qua <code>manifest.json</code> (Không build lại Shell)</h4>
+                <h4>Chuyển đổi phiên bản qua <code>manifest.json</code> (Không build lại Shell)</h4>
                 <p class="sl-lab-hint">
-                  Cả 2 bản artifact bất biến <code>cart.v1.&lt;hash&gt;.js</code> và <code>cart.v2.&lt;hash&gt;.js</code> đều tồn tại song song trên cổng <code>:3002</code>. Chuyển đổi manifest sẽ cập nhật ngay Giỏ hàng mà vẫn giữ nguyên sản phẩm đang mua!
+                  Hai bản build độc lập <code>cart.v1.&lt;hash&gt;.js</code> và <code>cart.v2.&lt;hash&gt;.js</code> được lưu song song. Cập nhật manifest sẽ thay đổi giao diện Giỏ hàng mà vẫn giữ nguyên dữ liệu hiện có.
                 </p>
                 <div class="sl-manifest-btns">
                   <button type="button" id="btn-deploy-v2" class="sl-btn-deploy">
-                    🚀 F7: Deploy Cart v2.0 (Thêm Gói quà VIP + VietQR)
+                    Deploy Cart v2.0
                   </button>
                   <button type="button" id="btn-rollback-v1" class="sl-btn-rollback">
-                    ⏪ F8: Instant Rollback về Cart v1.0
+                    Rollback về Cart v1.0
                   </button>
                   <button type="button" id="btn-reset-demo" class="sl-btn-outline">
-                    🔄 Đặt lại tồn kho mẫu
+                    Đặt lại tồn kho
                   </button>
                 </div>
                 <div id="manifest-status-msg" class="sl-manifest-msg"></div>
               </div>
               <div>
-                <div class="sl-code-label">Nội dung thực tế <code>/manifest.json</code> (Cache-Control: no-cache):</div>
+                <div class="sl-code-label">Nội dung <code>/manifest.json</code>:</div>
                 <pre id="manifest-json-preview" class="sl-code-box">Đang tải manifest.json...</pre>
               </div>
             </div>
           </div>
 
-          <!-- Tab 3: Live Event Bus & Turn Token Inspector -->
           <div class="sl-lab-pane" id="lab-pane-events">
             <div class="sl-events-head">
-              <span>Singleton EventBus ID: <code id="bus-singleton-id">...</code> • Shared Format: <code id="format-singleton-id">...</code></span>
+              <span>EventBus ID: <code id="bus-singleton-id">...</code> &middot; Shared Format: <code id="format-singleton-id">...</code></span>
               <button type="button" id="btn-clear-logs" class="sl-btn-outline sl-btn-sm">Xóa nhật ký</button>
             </div>
             <div id="event-log-stream" class="sl-event-stream"></div>
@@ -111,40 +105,35 @@
         </div>
       </section>
 
-      <!-- Màn hình chính ghép 4 Remote thuộc 4 công nghệ Frontend khác nhau -->
       <main class="sl-main">
-        <!-- SLOT 1: Svelte 4 (:3003) -->
         <section class="sl-slot-card sl-slot-full" data-slot-card="promo">
           <div class="sl-slot-header">
             <div class="sl-slot-title-group">
-              <sl-tech-pill tech="Svelte 4" port="3003" color="#ff3e00"></sl-tech-pill>
-              <h2>Khuyến mãi, Tiến độ Freeship &amp; Bộ tối ưu Voucher</h2>
+              <sl-tech-pill tech="Svelte 4" port="3003"></sl-tech-pill>
+              <h2>Khuyến mãi &amp; Tiến độ miễn phí vận chuyển</h2>
             </div>
             <div class="sl-slot-meta" id="meta-promo">Đang khởi tạo...</div>
           </div>
           <div id="slot-promo" class="sl-slot-body"></div>
         </section>
 
-        <!-- Khu vực 2 cột: React Catalog (:3001) + Vue Cart (:3002) -->
         <div class="sl-workspace-grid">
-          <!-- SLOT 2: React 18 (:3001) -->
           <section class="sl-slot-card" data-slot-card="catalog">
             <div class="sl-slot-header">
               <div class="sl-slot-title-group">
-                <sl-tech-pill tech="React 18" port="3001" color="#0284c7"></sl-tech-pill>
-                <h2>Danh mục Sản phẩm &amp; Tồn kho Thời gian thực</h2>
+                <sl-tech-pill tech="React 18" port="3001"></sl-tech-pill>
+                <h2>Danh mục sản phẩm</h2>
               </div>
               <div class="sl-slot-meta" id="meta-catalog">Đang khởi tạo...</div>
             </div>
             <div id="slot-catalog" class="sl-slot-body"></div>
           </section>
 
-          <!-- SLOT 3: Vue 3 (:3002) -->
           <aside class="sl-slot-card sl-cart-sticky" data-slot-card="cart">
             <div class="sl-slot-header">
               <div class="sl-slot-title-group">
-                <sl-tech-pill tech="Vue 3" port="3002" color="#10b981"></sl-tech-pill>
-                <h2>Giỏ hàng Thông minh &amp; Thanh toán</h2>
+                <sl-tech-pill tech="Vue 3" port="3002"></sl-tech-pill>
+                <h2>Giỏ hàng &amp; Thanh toán</h2>
               </div>
               <div class="sl-slot-meta" id="meta-cart">Đang khởi tạo...</div>
             </div>
@@ -152,12 +141,11 @@
           </aside>
         </div>
 
-        <!-- SLOT 4: Web Components + Shadow DOM (:3004) -->
         <section class="sl-slot-card sl-slot-full" data-slot-card="reviews">
           <div class="sl-slot-header">
             <div class="sl-slot-title-group">
-              <sl-tech-pill tech="Web Components (Shadow DOM)" port="3004" color="#7c3aed"></sl-tech-pill>
-              <h2>Đánh giá Xác thực Mua hàng &amp; Phân tích Điểm sao</h2>
+              <sl-tech-pill tech="Web Components" port="3004"></sl-tech-pill>
+              <h2>Đánh giá sản phẩm</h2>
             </div>
             <div class="sl-slot-meta" id="meta-reviews">Đang khởi tạo...</div>
           </div>

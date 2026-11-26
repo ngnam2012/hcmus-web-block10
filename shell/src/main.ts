@@ -154,11 +154,11 @@ function updateSlotMetaHeader(slot: SlotKey) {
   if (!st || !el) return;
   const fileName = st.url.split('/').pop()?.split('?')[0] || 'entry.js';
   if (st.status === 'mounted') {
-    el.textContent = `✓ ${fileName} • Lượt #${st.turn} (${st.loadTimeMs ?? 0}ms)`;
+    el.textContent = `${fileName} | Lượt #${st.turn} (${st.loadTimeMs ?? 0}ms)`;
   } else if (st.status === 'loading') {
-    el.textContent = `⏳ Đang tải Lượt #${st.turn}...`;
+    el.textContent = `Đang tải lượt #${st.turn}...`;
   } else {
-    el.textContent = `⚠️ Fallback • Lượt #${st.turn}`;
+    el.textContent = `Fallback | Lượt #${st.turn}`;
   }
 }
 
@@ -175,27 +175,27 @@ function renderChaosCards() {
             ? 'is-loading'
             : 'is-fallback';
       const statusText =
-        st.status === 'mounted' ? 'MOUNTED' : st.status === 'loading' ? 'LOADING' : 'FALLBACK';
+        st.status === 'mounted' ? 'ONLINE' : st.status === 'loading' ? 'LOADING' : 'FALLBACK';
 
       return `
         <div class="sl-chaos-card">
           <div class="sl-chaos-head">
             <strong>${st.framework} (:${st.port})</strong>
-            <span class="sl-status-badge ${badgeClass}">${statusText} • #${st.turn}</span>
+            <span class="sl-status-badge ${badgeClass}">${statusText} #${st.turn}</span>
           </div>
           <div class="sl-chaos-sub" title="${st.url}">${st.url}</div>
           <div class="sl-chaos-actions">
             <button type="button" class="sl-chaos-btn" data-chaos-op="reload" data-slot="${st.slot}">
-              ↻ Nạp chuẩn
+              Nạp lại
             </button>
             <button type="button" class="sl-chaos-btn is-danger" data-chaos-op="timeout" data-slot="${st.slot}">
-              ⏱️ F4: Timeout 4.5s
+              F4: Timeout 4.5s
             </button>
             <button type="button" class="sl-chaos-btn is-danger" data-chaos-op="crash" data-slot="${st.slot}">
-              💥 F5: Lỗi mount()
+              F5: Lỗi mount()
             </button>
             <button type="button" class="sl-chaos-btn" data-chaos-op="race" data-slot="${st.slot}">
-              🏁 F6: Race (5 lượt)
+              F6: Race (5 lượt)
             </button>
             <button
               type="button"
@@ -203,7 +203,7 @@ function renderChaosCards() {
               data-chaos-op="toggle-port"
               data-slot="${st.slot}"
             >
-              ${st.serverOnline ? `🔌 F3: Tắt cổng :${st.port}` : `⚡ Bật lại cổng :${st.port}`}
+              ${st.serverOnline ? `F3: Ngắt cổng :${st.port}` : `Bật lại cổng :${st.port}`}
             </button>
           </div>
         </div>
@@ -356,7 +356,7 @@ async function switchCartEdition(edition: 'v1' | 'v2') {
 
   const actionLabel = edition === 'v2' ? 'Deploy độc lập Cart v2.0' : 'Instant Rollback về Cart v1.0';
   if (msgEl) {
-    msgEl.textContent = `✓ ${actionLabel} thành công! URL mới trong manifest.json: ${newCartUrl} (Giỏ hàng vẫn giữ nguyên dữ liệu, bấm F5 cũng nhận bản ${edition}!)`;
+    msgEl.textContent = `${actionLabel} thành công. URL mới trong manifest.json: ${newCartUrl}`;
   }
   appendSystemLog('Manifest CD', edition === 'v2' ? 'deploy:cart-v2' : 'rollback:cart-v1', newCartUrl);
 }
@@ -384,13 +384,13 @@ function setupShellInteractions() {
     appendSystemLog(entry.source, entry.event, entry.payload);
   });
 
-  // 2. Đổi giao diện Sáng / Tối qua CSS Custom Properties (tự động lan tới cả 4 công nghệ & Shadow DOM)
+  // 2. Đổi giao diện Sáng / Tối qua CSS Custom Properties
   const themeBtn = document.getElementById('theme-toggle-btn');
   themeBtn?.addEventListener('click', () => {
     currentTheme = currentTheme === 'light' ? 'dark' : 'light';
     document.documentElement.setAttribute('data-theme', currentTheme);
     if (themeBtn) {
-      themeBtn.textContent = currentTheme === 'light' ? '🌙 Giao diện Tối' : '☀️ Giao diện Sáng';
+      themeBtn.textContent = currentTheme === 'light' ? 'Chế độ tối' : 'Chế độ sáng';
     }
     eventBus.emit('shell:theme-changed', { theme: currentTheme }, 'App Shell');
   });

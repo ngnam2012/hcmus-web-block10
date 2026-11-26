@@ -48,20 +48,18 @@ export default function App({ ctx }: AppProps) {
   const [selectedProductId, setSelectedProductId] = useState<string>('p1');
   const [justAddedId, setJustAddedId] = useState<string | null>(null);
 
-  // Phát thông tin danh mục sản phẩm sang Remote Reviews để đồng bộ danh sách & điểm sao
   useEffect(() => {
     ctx.eventBus.emit('catalog:ready', {
       products: products.map((p) => ({
         id: p.id,
+        code: p.code,
         name: p.name,
-        icon: p.icon,
         rating: p.rating,
         reviewCount: p.reviewCount
       }))
     });
   }, []);
 
-  // Lắng nghe thay đổi giỏ hàng (Vue) để tính tồn kho khả dụng & lắng nghe đánh giá mới (Web Components)
   useEffect(() => {
     const unsubCart = ctx.eventBus.on(
       'cart:updated',
@@ -159,12 +157,11 @@ export default function App({ ctx }: AppProps) {
     const unitPrice = product.basePrice + variant.priceDelta;
     const sku = `${product.id}__${variant.id}`;
 
-    // Áp dụng mẫu Expand–Contract (Phần 6): gửi đồng thời unitPrice (mới) và price (tương thích ngược)
     ctx.eventBus.emit('cart:add', {
       sku,
       productId: product.id,
+      code: product.code,
       name: product.name,
-      icon: product.icon,
       category: product.category,
       variantId: variant.id,
       variantLabel: variant.label,
@@ -183,8 +180,8 @@ export default function App({ ctx }: AppProps) {
     setSelectedProductId(product.id);
     ctx.eventBus.emit('product:select', {
       productId: product.id,
+      code: product.code,
       name: product.name,
-      icon: product.icon,
       rating: product.rating,
       reviewCount: product.reviewCount
     });
@@ -197,7 +194,7 @@ export default function App({ ctx }: AppProps) {
           <input
             type="search"
             className="catalog-search"
-            placeholder="Tìm sản phẩm, thông số (VD: ANC, 4K, Switch)..."
+            placeholder="Tìm tên sản phẩm hoặc thông số..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
@@ -210,7 +207,7 @@ export default function App({ ctx }: AppProps) {
             onChange={(e) => setMaxPriceFilter(Number(e.target.value))}
             aria-label="Lọc trần giá"
           >
-            <option value={2500000}>Mọi mức giá (≤ 2.5tr)</option>
+            <option value={2500000}>Tất cả mức giá</option>
             <option value={1000000}>Dưới 1.000.000 ₫</option>
             <option value={1700000}>Dưới 1.700.000 ₫</option>
           </select>
@@ -221,10 +218,10 @@ export default function App({ ctx }: AppProps) {
             onChange={(e) => setSortBy(e.target.value as any)}
             aria-label="Sắp xếp"
           >
-            <option value="popular">Sắp xếp: Nổi bật</option>
-            <option value="price-asc">Giá: Thấp → Cao</option>
-            <option value="price-desc">Giá: Cao → Thấp</option>
-            <option value="rating">Đánh giá cao nhất</option>
+            <option value="popular">Sắp xếp: Mặc định</option>
+            <option value="price-asc">Giá tăng dần</option>
+            <option value="price-desc">Giá giảm dần</option>
+            <option value="rating">Điểm đánh giá cao</option>
           </select>
         </div>
       </div>
@@ -246,12 +243,12 @@ export default function App({ ctx }: AppProps) {
         <span>
           Hiển thị <strong>{filteredProducts.length}</strong> / {products.length} sản phẩm
         </span>
-        <span>Đồng bộ tồn kho hai chiều với Giỏ hàng (Vue)</span>
+        <span>Tồn kho đồng bộ trực tiếp với Giỏ hàng</span>
       </div>
 
       {filteredProducts.length === 0 ? (
         <div className="catalog-empty">
-          Không tìm thấy sản phẩm phù hợp bộ lọc hiện tại.{' '}
+          Không tìm thấy sản phẩm phù hợp.{' '}
           <button
             type="button"
             className="catalog-review-link"
@@ -280,9 +277,7 @@ export default function App({ ctx }: AppProps) {
               >
                 <div>
                   <div className="catalog-card-top">
-                    <div className="catalog-icon-box" aria-hidden="true">
-                      {product.icon}
-                    </div>
+                    <span className="catalog-sku">{product.code}</span>
                     <div className="catalog-badges">
                       {product.badge && <span className="catalog-badge">{product.badge}</span>}
                       <span
@@ -292,9 +287,9 @@ export default function App({ ctx }: AppProps) {
                       >
                         {available === 0
                           ? totalStock === 0
-                            ? 'Đã bán hết'
+                            ? 'Đã hết hàng'
                             : 'Đã giữ hết trong giỏ'
-                          : `Còn ${available} trong kho`}
+                          : `Còn ${available}`}
                       </span>
                     </div>
                   </div>
@@ -303,18 +298,18 @@ export default function App({ ctx }: AppProps) {
                   <p className="catalog-spec">{product.shortSpec}</p>
 
                   <div className="catalog-rating-row">
-                    <span className="catalog-stars">★ {product.rating.toFixed(1)}</span>
+                    <span className="catalog-stars">Điểm: {product.rating.toFixed(1)}/5</span>
                     <button
                       type="button"
                       className="catalog-review-link"
                       onClick={() => handleInspectReviews(product)}
                     >
-                      {product.reviewCount} đánh giá • Xem/Viết
+                      {product.reviewCount} đánh giá
                     </button>
                   </div>
 
                   <label className="catalog-variant-label" htmlFor={`var-${product.id}`}>
-                    Phiên bản / Tùy chọn:
+                    Phiên bản:
                   </label>
                   <select
                     id={`var-${product.id}`}
@@ -336,7 +331,7 @@ export default function App({ ctx }: AppProps) {
                   <div>
                     <span className="catalog-price">{formatVND(unitPrice)}</span>
                     {reserved > 0 && (
-                      <span className="catalog-in-cart-hint">Đang có {reserved} trong giỏ</span>
+                      <span className="catalog-in-cart-hint">Trong giỏ: {reserved}</span>
                     )}
                   </div>
 
@@ -347,10 +342,10 @@ export default function App({ ctx }: AppProps) {
                     onClick={() => handleAddToCart(product)}
                   >
                     {justAddedId === product.id
-                      ? '✓ Đã thêm!'
+                      ? 'Đã thêm'
                       : available === 0
                         ? 'Hết hàng'
-                        : '+ Thêm vào giỏ'}
+                        : 'Thêm vào giỏ'}
                   </button>
                 </div>
               </article>

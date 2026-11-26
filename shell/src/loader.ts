@@ -163,14 +163,13 @@ export async function loadRemote(options: LoadRemoteOptions): Promise<MountedRem
 
     container.innerHTML = `
       <div class="sl-fallback" role="alert">
-        <div class="sl-fallback-icon">⚠️</div>
         <div class="sl-fallback-content">
           <strong>Module "${slotName}" tạm thời gián đoạn (Đã cô lập lỗi cục bộ)</strong>
           <p>${reason}</p>
           <small>Các thành phần khác trên trang vẫn hoạt động bình thường. URL: <code>${url}</code></small>
         </div>
         <button type="button" class="sl-retry-btn" data-retry="${slotName}">
-          ↻ Thử tải lại
+          Thử tải lại
         </button>
       </div>
     `;

@@ -1,28 +1,25 @@
-/* Quyết định 6: Design Tokens toàn cục qua CSS Custom Properties — truyền xuyên cả Shadow DOM */
 :root,
 [data-theme='light'] {
   --sl-font-sans: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
-  --sl-bg: #f1f5f9;
+  --sl-bg: #f8fafc;
   --sl-surface: #ffffff;
-  --sl-surface-subtle: #f8fafc;
+  --sl-surface-subtle: #f1f5f9;
   --sl-border: #e2e8f0;
-  --sl-text-primary: #0f172a;
-  --sl-text-secondary: #475569;
-  --sl-primary: #2563eb;
-  --sl-radius-sm: 8px;
-  --sl-radius-md: 12px;
-  --sl-shadow: 0 4px 16px rgba(15, 23, 42, 0.05);
+  --sl-text-primary: #1e293b;
+  --sl-text-secondary: #64748b;
+  --sl-primary: #1d4ed8;
+  --sl-radius-sm: 6px;
+  --sl-radius-md: 8px;
 }
 
 [data-theme='dark'] {
-  --sl-bg: #0b1120;
-  --sl-surface: #111827;
-  --sl-surface-subtle: #1e293b;
+  --sl-bg: #0f172a;
+  --sl-surface: #1e293b;
+  --sl-surface-subtle: #0f172a;
   --sl-border: #334155;
-  --sl-text-primary: #f8fafc;
+  --sl-text-primary: #f1f5f9;
   --sl-text-secondary: #94a3b8;
   --sl-primary: #3b82f6;
-  --sl-shadow: 0 6px 22px rgba(0, 0, 0, 0.35);
 }
 
 * {
@@ -34,7 +31,7 @@ body {
   font-family: var(--sl-font-sans);
   background: var(--sl-bg);
   color: var(--sl-text-primary);
-  transition: background-color 0.2s ease, color 0.2s ease;
+  line-height: 1.5;
 }
 
 /* Header */
@@ -44,11 +41,10 @@ body {
   z-index: 40;
   background: var(--sl-surface);
   border-bottom: 1px solid var(--sl-border);
-  box-shadow: var(--sl-shadow);
 }
 
 .sl-header-inner {
-  max-width: 1380px;
+  max-width: 1280px;
   margin: 0 auto;
   padding: 12px 20px;
   display: flex;
@@ -61,24 +57,27 @@ body {
 .sl-brand {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
 }
 
 .sl-logo {
-  width: 42px;
-  height: 42px;
-  border-radius: 11px;
-  background: linear-gradient(135deg, #2563eb, #7c3aed);
+  width: 34px;
+  height: 34px;
+  border-radius: 6px;
+  background: var(--sl-primary);
+  color: #ffffff;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.35rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
 }
 
 .sl-brand h1 {
   margin: 0;
-  font-size: 1.12rem;
-  font-weight: 800;
+  font-size: 1.05rem;
+  font-weight: 700;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -86,15 +85,16 @@ body {
 
 .sl-brand h1 span {
   font-size: 0.72rem;
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: rgba(37, 99, 235, 0.12);
-  color: var(--sl-primary);
+  font-weight: 500;
+  padding: 1px 7px;
+  border-radius: 4px;
+  border: 1px solid var(--sl-border);
+  color: var(--sl-text-secondary);
 }
 
 .sl-brand p {
-  margin: 2px 0 0;
-  font-size: 0.76rem;
+  margin: 1px 0 0;
+  font-size: 0.75rem;
   color: var(--sl-text-secondary);
 }
 
@@ -106,49 +106,51 @@ body {
 }
 
 .sl-cart-pill {
-  padding: 6px 12px;
-  border-radius: 999px;
-  background: rgba(16, 185, 129, 0.12);
-  border: 1px solid rgba(16, 185, 129, 0.35);
-  color: #059669;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: var(--sl-surface-subtle);
+  border: 1px solid var(--sl-border);
+  color: var(--sl-text-primary);
   font-size: 0.8rem;
-  font-weight: 600;
 }
 
 .sl-header-select {
   padding: 6px 10px;
-  border-radius: 8px;
-  border: 1px solid var(--sl-border);
-  background: var(--sl-surface-subtle);
-  color: var(--sl-text-primary);
-  font-size: 0.79rem;
-  font-weight: 600;
-}
-
-.sl-btn-outline {
-  padding: 7px 11px;
-  border-radius: 8px;
+  border-radius: 6px;
   border: 1px solid var(--sl-border);
   background: var(--sl-surface);
   color: var(--sl-text-primary);
-  font-size: 0.79rem;
-  font-weight: 600;
+  font-size: 0.8rem;
+}
+
+.sl-btn-outline {
+  padding: 6px 11px;
+  border-radius: 6px;
+  border: 1px solid var(--sl-border);
+  background: var(--sl-surface);
+  color: var(--sl-text-primary);
+  font-size: 0.8rem;
+  font-weight: 500;
   cursor: pointer;
 }
 
+.sl-btn-outline:hover {
+  border-color: var(--sl-primary);
+}
+
 .sl-btn-sm {
-  padding: 4px 9px;
+  padding: 4px 8px;
   font-size: 0.74rem;
 }
 
 .sl-btn-lab {
-  padding: 7px 12px;
-  border-radius: 8px;
-  border: none;
-  background: linear-gradient(135deg, #2563eb, #7c3aed);
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--sl-primary);
+  background: var(--sl-primary);
   color: #ffffff;
-  font-size: 0.79rem;
-  font-weight: 700;
+  font-size: 0.8rem;
+  font-weight: 600;
   cursor: pointer;
 }
 
@@ -163,7 +165,7 @@ body {
 }
 
 .sl-lab-inner {
-  max-width: 1380px;
+  max-width: 1280px;
   margin: 0 auto;
   padding: 14px 20px;
 }
@@ -171,18 +173,18 @@ body {
 .sl-lab-tabs {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
   margin-bottom: 12px;
 }
 
 .sl-lab-tab {
-  padding: 7px 13px;
-  border-radius: 8px;
+  padding: 6px 12px;
+  border-radius: 6px;
   border: 1px solid var(--sl-border);
   background: var(--sl-surface-subtle);
   color: var(--sl-text-secondary);
   font-size: 0.79rem;
-  font-weight: 700;
+  font-weight: 600;
   cursor: pointer;
 }
 
@@ -202,20 +204,19 @@ body {
 
 .sl-lab-hint {
   margin: 0 0 10px;
-  font-size: 0.79rem;
+  font-size: 0.8rem;
   color: var(--sl-text-secondary);
-  line-height: 1.45;
 }
 
 .sl-chaos-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 10px;
 }
 
 .sl-chaos-card {
-  padding: 11px 12px;
-  border-radius: 10px;
+  padding: 10px 12px;
+  border-radius: 6px;
   border: 1px solid var(--sl-border);
   background: var(--sl-surface-subtle);
 }
@@ -224,30 +225,32 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
   font-size: 0.8rem;
 }
 
 .sl-status-badge {
   font-size: 0.68rem;
-  font-weight: 800;
-  padding: 2px 7px;
-  border-radius: 999px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--sl-border);
 }
 
 .sl-status-badge.is-mounted {
-  background: rgba(16, 185, 129, 0.15);
-  color: #059669;
+  color: #15803d;
+  border-color: #86efac;
+  background: rgba(22, 163, 74, 0.08);
 }
 
 .sl-status-badge.is-loading {
-  background: rgba(37, 99, 235, 0.15);
-  color: #2563eb;
+  color: var(--sl-primary);
 }
 
 .sl-status-badge.is-fallback {
-  background: rgba(239, 68, 68, 0.15);
-  color: #dc2626;
+  color: #b91c1c;
+  border-color: #fca5a5;
+  background: rgba(220, 38, 38, 0.08);
 }
 
 .sl-chaos-sub {
@@ -267,12 +270,11 @@ body {
 
 .sl-chaos-btn {
   padding: 4px 8px;
-  border-radius: 6px;
+  border-radius: 4px;
   border: 1px solid var(--sl-border);
   background: var(--sl-surface);
   color: var(--sl-text-primary);
-  font-size: 0.71rem;
-  font-weight: 600;
+  font-size: 0.72rem;
   cursor: pointer;
 }
 
@@ -281,13 +283,12 @@ body {
 }
 
 .sl-chaos-btn.is-danger {
-  border-color: rgba(239, 68, 68, 0.45);
-  color: #dc2626;
+  color: #b91c1c;
 }
 
 .sl-chaos-btn.is-server-off {
-  background: #dc2626;
-  border-color: #dc2626;
+  background: #b91c1c;
+  border-color: #b91c1c;
   color: #ffffff;
 }
 
@@ -307,7 +308,7 @@ body {
 
 .sl-manifest-layout h4 {
   margin: 0 0 6px;
-  font-size: 0.9rem;
+  font-size: 0.88rem;
 }
 
 .sl-manifest-btns {
@@ -318,45 +319,44 @@ body {
 }
 
 .sl-btn-deploy {
-  padding: 8px 13px;
-  border-radius: 8px;
-  border: none;
-  background: #7c3aed;
+  padding: 7px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--sl-primary);
+  background: var(--sl-primary);
   color: #ffffff;
-  font-weight: 700;
-  font-size: 0.79rem;
+  font-weight: 600;
+  font-size: 0.8rem;
   cursor: pointer;
 }
 
 .sl-btn-rollback {
-  padding: 8px 13px;
-  border-radius: 8px;
-  border: none;
-  background: #059669;
-  color: #ffffff;
-  font-weight: 700;
-  font-size: 0.79rem;
+  padding: 7px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--sl-border);
+  background: var(--sl-surface);
+  color: var(--sl-text-primary);
+  font-weight: 600;
+  font-size: 0.8rem;
   cursor: pointer;
 }
 
 .sl-manifest-msg {
   margin-top: 8px;
   font-size: 0.78rem;
-  font-weight: 600;
   color: var(--sl-primary);
 }
 
 .sl-code-label {
   font-size: 0.74rem;
-  font-weight: 700;
-  margin-bottom: 5px;
+  font-weight: 600;
+  margin-bottom: 4px;
   color: var(--sl-text-secondary);
 }
 
 .sl-code-box {
   margin: 0;
   padding: 10px 12px;
-  border-radius: 9px;
+  border-radius: 6px;
   background: #0f172a;
   color: #e2e8f0;
   font-size: 0.74rem;
@@ -374,15 +374,15 @@ body {
 }
 
 .sl-event-stream {
-  max-height: 185px;
+  max-height: 180px;
   overflow-y: auto;
-  border-radius: 9px;
+  border-radius: 6px;
   border: 1px solid var(--sl-border);
   background: var(--sl-surface-subtle);
-  padding: 8px;
+  padding: 6px;
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 4px;
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
   font-size: 0.73rem;
 }
@@ -392,7 +392,7 @@ body {
   gap: 8px;
   align-items: baseline;
   padding: 4px 6px;
-  border-radius: 6px;
+  border-radius: 4px;
   background: var(--sl-surface);
 }
 
@@ -402,17 +402,14 @@ body {
 }
 
 .sl-event-src {
-  font-weight: 700;
-  padding: 1px 6px;
-  border-radius: 4px;
-  background: rgba(37, 99, 235, 0.12);
+  font-weight: 600;
   color: var(--sl-primary);
   flex-shrink: 0;
 }
 
 .sl-event-name {
-  font-weight: 700;
-  color: #059669;
+  font-weight: 600;
+  color: var(--sl-text-primary);
   flex-shrink: 0;
 }
 
@@ -425,18 +422,18 @@ body {
 
 /* Main Storefront Layout */
 .sl-main {
-  max-width: 1380px;
+  max-width: 1280px;
   margin: 0 auto;
-  padding: 18px 20px 40px;
+  padding: 16px 20px 36px;
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 16px;
 }
 
 .sl-workspace-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.7fr) minmax(340px, 1fr);
-  gap: 18px;
+  gap: 16px;
   align-items: start;
 }
 
@@ -448,14 +445,13 @@ body {
 
 .sl-cart-sticky {
   position: sticky;
-  top: 76px;
+  top: 70px;
 }
 
 .sl-slot-card {
   background: var(--sl-surface);
   border: 1px solid var(--sl-border);
   border-radius: var(--sl-radius-md);
-  box-shadow: var(--sl-shadow);
   overflow: hidden;
 }
 
@@ -465,7 +461,7 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 11px 16px;
+  padding: 10px 16px;
   background: var(--sl-surface-subtle);
   border-bottom: 1px solid var(--sl-border);
 }
@@ -473,14 +469,14 @@ body {
 .sl-slot-title-group {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   flex-wrap: wrap;
 }
 
 .sl-slot-title-group h2 {
   margin: 0;
-  font-size: 0.93rem;
-  font-weight: 800;
+  font-size: 0.9rem;
+  font-weight: 600;
 }
 
 .sl-slot-meta {
@@ -497,9 +493,9 @@ body {
 .sl-loading {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 20px 14px;
-  border-radius: 10px;
+  gap: 10px;
+  padding: 16px 14px;
+  border-radius: 6px;
   background: var(--sl-surface-subtle);
   color: var(--sl-text-secondary);
   font-size: 0.82rem;
@@ -509,14 +505,13 @@ body {
   font-size: 0.71rem;
   font-family: monospace;
   margin-top: 2px;
-  opacity: 0.8;
 }
 
 .sl-spinner {
-  width: 22px;
-  height: 22px;
+  width: 18px;
+  height: 18px;
   border-radius: 50%;
-  border: 3px solid var(--sl-border);
+  border: 2px solid var(--sl-border);
   border-top-color: var(--sl-primary);
   animation: sl-spin 0.75s linear infinite;
   flex-shrink: 0;
@@ -534,14 +529,10 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 16px;
-  border-radius: 10px;
-  background: rgba(239, 68, 68, 0.08);
-  border: 1px dashed rgba(239, 68, 68, 0.5);
-}
-
-.sl-fallback-icon {
-  font-size: 1.5rem;
+  padding: 14px 16px;
+  border-radius: 6px;
+  background: rgba(220, 38, 38, 0.05);
+  border: 1px solid rgba(220, 38, 38, 0.35);
 }
 
 .sl-fallback-content {
@@ -550,9 +541,9 @@ body {
 
 .sl-fallback-content strong {
   display: block;
-  color: #dc2626;
-  font-size: 0.86rem;
-  margin-bottom: 3px;
+  color: #b91c1c;
+  font-size: 0.85rem;
+  margin-bottom: 2px;
 }
 
 .sl-fallback-content p {
@@ -566,12 +557,12 @@ body {
 }
 
 .sl-retry-btn {
-  padding: 8px 14px;
-  border-radius: 8px;
-  border: none;
-  background: #dc2626;
+  padding: 7px 12px;
+  border-radius: 6px;
+  border: 1px solid #b91c1c;
+  background: #b91c1c;
   color: #ffffff;
-  font-size: 0.8rem;
-  font-weight: 700;
+  font-size: 0.78rem;
+  font-weight: 600;
   cursor: pointer;
 }

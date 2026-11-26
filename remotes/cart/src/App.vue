@@ -14,7 +14,6 @@ interface CartLineItem {
   sku: string;
   productId: string;
   name: string;
-  icon: string;
   variantLabel: string;
   unitPrice: number;
   qty: number;
@@ -125,7 +124,6 @@ function persistAndBroadcast() {
   });
 }
 
-// Kiểm tra tự động điều kiện mã giảm giá khi giỏ hàng thay đổi
 watch([subtotal, totalQty], ([newSub, newQty]) => {
   const v = activeVoucher.value;
   if (!v) return;
@@ -134,7 +132,7 @@ watch([subtotal, totalQty], ([newSub, newQty]) => {
   if (failsSubtotal || failsMinItems) {
     const removedCode = v.code;
     activeVoucher.value = null;
-    cartWarning.value = `Mã ${removedCode} đã tự động gỡ do giỏ hàng chưa đủ điều kiện tối thiểu.`;
+    cartWarning.value = `Mã ${removedCode} đã gỡ tự động do giỏ hàng chưa đủ điều kiện tối thiểu.`;
     props.ctx.eventBus.emit('promo:invalidated', {
       code: removedCode,
       reason: 'Giỏ hàng thay đổi dưới mức tối thiểu'
@@ -157,7 +155,7 @@ function changeQty(sku: string, delta: number) {
   if (delta > 0) {
     const productTotalInCart = getTotalQtyForProduct(target.productId);
     if (productTotalInCart + delta > target.maxStock) {
-      cartWarning.value = `Sản phẩm "${target.name}" chỉ còn tối đa ${target.maxStock} chiếc trong kho!`;
+      cartWarning.value = `Sản phẩm "${target.name}" chỉ còn tối đa ${target.maxStock} chiếc trong kho.`;
       return;
     }
   }
@@ -189,7 +187,7 @@ async function submitCheckout() {
   if (items.value.length === 0) return;
 
   if (recipientName.value.trim().length < 2) {
-    formError.value = 'Vui lòng nhập họ tên người nhận hợp lệ (tối thiểu 2 ký tự).';
+    formError.value = 'Vui lòng nhập họ tên người nhận (tối thiểu 2 ký tự).';
     return;
   }
   const phoneClean = recipientPhone.value.trim();
@@ -205,14 +203,13 @@ async function submitCheckout() {
   isSubmitting.value = true;
   try {
     const token = props.ctx?.getAccessToken ? await props.ctx.getAccessToken() : 'sl_guest_token';
-    await new Promise((r) => setTimeout(r, 350));
+    await new Promise((r) => setTimeout(r, 300));
 
     const orderCode = generateOrderCode();
     const purchasedSnapshot = items.value.map((i) => ({ ...i }));
     const finalSnapshot = finalTotal.value;
     const countSnapshot = totalQty.value;
 
-    // Lưu lịch sử sản phẩm đã mua để Remote Reviews xác thực "Đã mua hàng"
     try {
       const prevIds: string[] = JSON.parse(sessionStorage.getItem(PURCHASED_STORAGE_KEY) || '[]');
       const merged = Array.from(new Set([...prevIds, ...purchasedSnapshot.map((i) => i.productId)]));
@@ -252,7 +249,6 @@ async function submitCheckout() {
 const unsubscribers: Array<() => void> = [];
 
 onMounted(() => {
-  // Đồng bộ trạng thái giỏ hàng ngay khi vừa mount (kể cả sau khi Deploy/Rollback v1 <-> v2)
   persistAndBroadcast();
 
   unsubscribers.push(
@@ -260,7 +256,6 @@ onMounted(() => {
       cartWarning.value = '';
       lastReceipt.value = null;
 
-      // Đọc cả unitPrice (mới) và price (cũ) theo mẫu Expand–Contract
       const unitPrice = Number(payload.unitPrice ?? payload.price ?? 0);
       const maxStock = Number(payload.maxStock ?? 99);
       const currentProductQty = getTotalQtyForProduct(payload.productId);
@@ -280,7 +275,6 @@ onMounted(() => {
           sku: payload.sku,
           productId: payload.productId,
           name: payload.name,
-          icon: payload.icon || '📦',
           variantLabel: payload.variantLabel || 'Tiêu chuẩn',
           unitPrice,
           qty: 1,
@@ -322,58 +316,52 @@ onUnmounted(() => {
 
 <template>
   <div class="cart-root">
-    <!-- Banner phân biệt trực quan giữa v1.0 và v2.0 khi demo Independent Deploy / Instant Rollback -->
     <div v-if="isV2" class="cart-v2-banner">
       <div>
-        <strong>🚀 Cart v2.0 (Flash Release)</strong>
-        <span>Đã bổ sung Gói quà VIP &amp; Thanh toán nhanh VietQR</span>
+        <strong>Phiên bản Cart v2.0</strong>
+        <span>Bổ sung tùy chọn gói quà và thông tin chuyển khoản VietQR</span>
       </div>
-      <span class="cart-v2-pill">LIVE v2</span>
+      <span class="cart-v2-pill">v2.0</span>
     </div>
 
     <div v-if="cartWarning" class="cart-alert cart-alert-warn">
-      ⚠️ {{ cartWarning }}
+      {{ cartWarning }}
     </div>
 
     <div v-if="lastReceipt" class="cart-receipt">
       <div class="cart-receipt-head">
-        <strong>🎉 Đặt hàng thành công!</strong>
+        <strong>Đặt hàng thành công</strong>
         <span>{{ lastReceipt.orderCode }}</span>
       </div>
       <p>
         Tổng thanh toán: <strong>{{ formatVND(lastReceipt.finalTotal) }}</strong> ({{
           lastReceipt.itemCount
         }}
-        sản phẩm • {{ lastReceipt.paymentMethod }})
+        sản phẩm, {{ lastReceipt.paymentMethod }})
       </p>
       <small>
-        Xác thực qua Shell Auth ({{ lastReceipt.tokenPreview }}) lúc {{ lastReceipt.timestamp }}.
-        Bạn đã có thể viết đánh giá <strong>"Đã mua hàng"</strong> ở khung dưới!
+        Xác thực qua Shell ({{ lastReceipt.tokenPreview }}) lúc {{ lastReceipt.timestamp }}.
       </small>
     </div>
 
     <div v-if="items.length === 0" class="cart-empty">
-      <div class="cart-empty-icon">🛒</div>
-      <p>Giỏ hàng đang trống</p>
-      <small>Hãy chọn sản phẩm từ danh mục React bên trái để bắt đầu tính toán đơn hàng.</small>
+      <p>Chưa có sản phẩm trong giỏ hàng</p>
+      <small>Chọn sản phẩm từ danh mục bên trái để thêm vào đơn hàng.</small>
     </div>
 
     <template v-else>
       <ul class="cart-list">
         <li v-for="item in items" :key="item.sku" class="cart-item">
           <div class="cart-item-info">
-            <span class="cart-item-icon">{{ item.icon }}</span>
-            <div>
-              <div class="cart-item-name">{{ item.name }}</div>
-              <div class="cart-item-meta">
-                {{ item.variantLabel }} • {{ formatVND(item.unitPrice) }}
-              </div>
+            <div class="cart-item-name">{{ item.name }}</div>
+            <div class="cart-item-meta">
+              {{ item.variantLabel }} &middot; {{ formatVND(item.unitPrice) }}
             </div>
           </div>
 
           <div class="cart-item-actions">
             <div class="cart-qty-box">
-              <button type="button" class="cart-qty-btn" @click="changeQty(item.sku, -1)">−</button>
+              <button type="button" class="cart-qty-btn" @click="changeQty(item.sku, -1)">-</button>
               <span class="cart-qty-num">{{ item.qty }}</span>
               <button type="button" class="cart-qty-btn" @click="changeQty(item.sku, 1)">+</button>
             </div>
@@ -384,17 +372,16 @@ onUnmounted(() => {
               title="Xóa sản phẩm"
               @click="removeItem(item.sku)"
             >
-              ✕
+              Xóa
             </button>
           </div>
         </li>
       </ul>
 
-      <!-- Tính năng mới chỉ xuất hiện ở bản Deploy v2.0 -->
       <label v-if="isV2" class="cart-gift-option">
         <input v-model="giftWrapEnabled" type="checkbox" />
         <span>
-          🎁 Gói quà hộp cứng &amp; thiệp viết tay
+          Đóng gói hộp quà tặng
           <strong>{{
             subtotal >= VIP_GIFT_THRESHOLD ? '(Miễn phí đơn VIP)' : '(+25.000 ₫)'
           }}</strong>
@@ -403,19 +390,19 @@ onUnmounted(() => {
 
       <div class="cart-summary">
         <div class="cart-row">
-          <span>Tạm tính ({{ totalQty }} món):</span>
+          <span>Tạm tính ({{ totalQty }} SP):</span>
           <strong>{{ formatVND(subtotal) }}</strong>
         </div>
 
         <div v-if="activeVoucher" class="cart-row cart-row-discount">
           <span>
-            Voucher <code>{{ activeVoucher.code }}</code>:
+            Mã giảm giá <code>{{ activeVoucher.code }}</code>:
           </span>
           <strong>
             {{
               activeVoucher.type === 'freeship'
-                ? 'Miễn phí ship'
-                : `−${formatVND(productDiscount)}`
+                ? 'Miễn phí vận chuyển'
+                : `-${formatVND(productDiscount)}`
             }}
           </strong>
         </div>
@@ -423,13 +410,13 @@ onUnmounted(() => {
         <div class="cart-row">
           <span>Phí vận chuyển:</span>
           <strong :class="{ 'is-free': shippingFee === 0 }">
-            {{ shippingFee === 0 ? '0 ₫ (Freeship)' : formatVND(shippingFee) }}
+            {{ shippingFee === 0 ? '0 ₫ (Miễn phí)' : formatVND(shippingFee) }}
           </strong>
         </div>
 
         <div v-if="isV2 && giftWrapEnabled" class="cart-row">
-          <span>Dịch vụ gói quà:</span>
-          <strong>{{ giftWrapFee === 0 ? '0 ₫ (Tặng VIP)' : formatVND(giftWrapFee) }}</strong>
+          <span>Phí gói quà:</span>
+          <strong>{{ giftWrapFee === 0 ? '0 ₫' : formatVND(giftWrapFee) }}</strong>
         </div>
 
         <div class="cart-row">
@@ -438,28 +425,28 @@ onUnmounted(() => {
         </div>
 
         <div class="cart-row cart-row-total">
-          <span>Tổng thanh toán:</span>
+          <span>Tổng cộng:</span>
           <span class="cart-total-price">{{ formatVND(finalTotal) }}</span>
         </div>
 
         <div class="cart-loyalty">
-          ✨ Tích lũy thêm <strong>+{{ loyaltyPoints }} điểm</strong> thành viên ShopLite
+          Điểm tích lũy dự kiến: +{{ loyaltyPoints }} điểm
         </div>
       </div>
 
       <div class="cart-footer-btns">
-        <button type="button" class="cart-btn-secondary" @click="clearCart">Xóa giỏ</button>
+        <button type="button" class="cart-btn-secondary" @click="clearCart">Xóa tất cả</button>
         <button
           type="button"
           class="cart-btn-primary"
           @click="showCheckoutForm = !showCheckoutForm"
         >
-          {{ showCheckoutForm ? 'Ẩn biểu mẫu' : 'Tiến hành đặt hàng →' }}
+          {{ showCheckoutForm ? 'Đóng biểu mẫu' : 'Đặt hàng' }}
         </button>
       </div>
 
       <form v-if="showCheckoutForm" class="cart-checkout-form" @submit.prevent="submitCheckout">
-        <h4>Thông tin giao hàng &amp; Thanh toán</h4>
+        <h4>Thông tin nhận hàng</h4>
 
         <div v-if="formError" class="cart-alert cart-alert-error">{{ formError }}</div>
 
@@ -469,30 +456,30 @@ onUnmounted(() => {
         </div>
 
         <div class="cart-field">
-          <label>Số điện thoại (VN)</label>
+          <label>Số điện thoại</label>
           <input v-model="recipientPhone" type="tel" placeholder="0912345678" />
         </div>
 
         <div class="cart-field">
-          <label>Địa chỉ nhận hàng</label>
+          <label>Địa chỉ giao hàng</label>
           <input v-model="recipientAddress" type="text" placeholder="Số nhà, đường, quận/huyện" />
         </div>
 
         <div class="cart-field">
           <label>Phương thức thanh toán</label>
           <select v-model="paymentMethod">
-            <option value="VIETQR">Chuyển khoản nhanh VietQR</option>
+            <option value="VIETQR">Chuyển khoản VietQR</option>
             <option value="COD">Thanh toán khi nhận hàng (COD)</option>
-            <option value="WALLET">Ví điện tử ShopLite Pay</option>
+            <option value="WALLET">Ví điện tử</option>
           </select>
         </div>
 
         <div v-if="isV2 && paymentMethod === 'VIETQR'" class="cart-qr-preview">
-          <span>📱 <strong>VietQR v2 Instant:</strong> Tự động điền nội dung &amp; số tiền {{ formatVND(finalTotal) }}</span>
+          <span>VietQR v2: Tự động tạo mã thanh toán số tiền {{ formatVND(finalTotal) }}</span>
         </div>
 
         <button type="submit" class="cart-submit-order" :disabled="isSubmitting">
-          {{ isSubmitting ? 'Đang xác thực & xử lý...' : `Xác nhận thanh toán ${formatVND(finalTotal)}` }}
+          {{ isSubmitting ? 'Đang xử lý...' : `Xác nhận đặt hàng (${formatVND(finalTotal)})` }}
         </button>
       </form>
     </template>
@@ -502,7 +489,7 @@ onUnmounted(() => {
 <style scoped>
 .cart-root {
   font-family: var(--sl-font-sans, system-ui, sans-serif);
-  color: var(--sl-text-primary, #0f172a);
+  color: var(--sl-text-primary, #1e293b);
 }
 
 .cart-v2-banner {
@@ -510,55 +497,55 @@ onUnmounted(() => {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 9px 12px;
+  padding: 8px 10px;
   margin-bottom: 12px;
-  border-radius: 10px;
-  background: linear-gradient(135deg, rgba(124, 58, 237, 0.14), rgba(37, 99, 235, 0.14));
-  border: 1px solid rgba(124, 58, 237, 0.35);
+  border-radius: 6px;
+  background: var(--sl-surface-subtle, #f1f5f9);
+  border: 1px solid var(--sl-primary, #1d4ed8);
   font-size: 0.76rem;
 }
 
 .cart-v2-banner strong {
   display: block;
-  color: #6d28d9;
-  font-size: 0.8rem;
+  color: var(--sl-primary, #1d4ed8);
+  font-size: 0.79rem;
 }
 
 .cart-v2-pill {
-  background: #7c3aed;
+  background: var(--sl-primary, #1d4ed8);
   color: #fff;
-  padding: 2px 8px;
-  border-radius: 999px;
-  font-weight: 700;
-  font-size: 0.68rem;
+  padding: 1px 7px;
+  border-radius: 4px;
+  font-weight: 600;
+  font-size: 0.69rem;
   flex-shrink: 0;
 }
 
 .cart-alert {
   padding: 8px 10px;
-  border-radius: 8px;
+  border-radius: 6px;
   font-size: 0.78rem;
   margin-bottom: 10px;
 }
 
 .cart-alert-warn {
-  background: rgba(245, 158, 11, 0.14);
-  border: 1px solid rgba(245, 158, 11, 0.4);
+  background: rgba(217, 119, 6, 0.08);
+  border: 1px solid rgba(217, 119, 6, 0.35);
   color: #b45309;
 }
 
 .cart-alert-error {
-  background: rgba(239, 68, 68, 0.12);
-  border: 1px solid rgba(239, 68, 68, 0.35);
-  color: #dc2626;
+  background: rgba(220, 38, 38, 0.08);
+  border: 1px solid rgba(220, 38, 38, 0.35);
+  color: #b91c1c;
 }
 
 .cart-receipt {
   padding: 12px;
   margin-bottom: 12px;
-  border-radius: 10px;
-  background: rgba(16, 185, 129, 0.12);
-  border: 1px solid rgba(16, 185, 129, 0.38);
+  border-radius: 6px;
+  background: rgba(22, 163, 74, 0.08);
+  border: 1px solid rgba(22, 163, 74, 0.35);
   font-size: 0.8rem;
 }
 
@@ -566,7 +553,7 @@ onUnmounted(() => {
   display: flex;
   justify-content: space-between;
   margin-bottom: 4px;
-  color: #047857;
+  color: #15803d;
 }
 
 .cart-receipt p {
@@ -574,28 +561,23 @@ onUnmounted(() => {
 }
 
 .cart-receipt small {
-  color: var(--sl-text-secondary, #475569);
-  line-height: 1.35;
+  color: var(--sl-text-secondary, #64748b);
   display: block;
 }
 
 .cart-empty {
   text-align: center;
-  padding: 26px 12px;
-  border: 1px dashed var(--sl-border, #cbd5e1);
-  border-radius: 10px;
+  padding: 24px 12px;
+  border: 1px solid var(--sl-border, #e2e8f0);
+  border-radius: 6px;
   color: var(--sl-text-secondary, #64748b);
-}
-
-.cart-empty-icon {
-  font-size: 2rem;
-  margin-bottom: 6px;
 }
 
 .cart-empty p {
   margin: 0 0 4px;
-  font-weight: 700;
-  color: var(--sl-text-primary, #0f172a);
+  font-weight: 600;
+  color: var(--sl-text-primary, #1e293b);
+  font-size: 0.86rem;
 }
 
 .cart-list {
@@ -605,7 +587,7 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  max-height: 280px;
+  max-height: 270px;
   overflow-y: auto;
 }
 
@@ -614,26 +596,19 @@ onUnmounted(() => {
   justify-content: space-between;
   align-items: center;
   gap: 8px;
-  padding: 9px 10px;
-  border-radius: 9px;
+  padding: 8px 10px;
+  border-radius: 6px;
   background: var(--sl-surface-subtle, #f8fafc);
   border: 1px solid var(--sl-border, #e2e8f0);
 }
 
 .cart-item-info {
-  display: flex;
-  align-items: center;
-  gap: 8px;
   min-width: 0;
-}
-
-.cart-item-icon {
-  font-size: 1.2rem;
 }
 
 .cart-item-name {
   font-size: 0.81rem;
-  font-weight: 700;
+  font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -656,40 +631,40 @@ onUnmounted(() => {
   display: inline-flex;
   align-items: center;
   border: 1px solid var(--sl-border, #cbd5e1);
-  border-radius: 6px;
+  border-radius: 4px;
   background: var(--sl-surface, #ffffff);
 }
 
 .cart-qty-btn {
   border: none;
   background: transparent;
-  color: var(--sl-text-primary, #0f172a);
+  color: var(--sl-text-primary, #1e293b);
   width: 24px;
   height: 24px;
   cursor: pointer;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .cart-qty-num {
   font-size: 0.78rem;
-  font-weight: 700;
+  font-weight: 600;
   min-width: 20px;
   text-align: center;
 }
 
 .cart-line-total {
   font-size: 0.8rem;
-  font-weight: 700;
-  min-width: 78px;
+  font-weight: 600;
+  min-width: 76px;
   text-align: right;
 }
 
 .cart-remove-btn {
   border: none;
   background: transparent;
-  color: #ef4444;
+  color: #b91c1c;
   cursor: pointer;
-  font-size: 0.8rem;
+  font-size: 0.74rem;
   padding: 2px 4px;
 }
 
@@ -699,16 +674,16 @@ onUnmounted(() => {
   gap: 8px;
   padding: 8px 10px;
   margin-bottom: 10px;
-  border-radius: 8px;
-  background: rgba(124, 58, 237, 0.08);
-  border: 1px dashed rgba(124, 58, 237, 0.35);
-  font-size: 0.77rem;
+  border-radius: 6px;
+  background: var(--sl-surface-subtle, #f8fafc);
+  border: 1px solid var(--sl-border, #cbd5e1);
+  font-size: 0.78rem;
   cursor: pointer;
 }
 
 .cart-summary {
   padding: 12px;
-  border-radius: 10px;
+  border-radius: 6px;
   background: var(--sl-surface-subtle, #f8fafc);
   border: 1px solid var(--sl-border, #e2e8f0);
   margin-bottom: 12px;
@@ -722,24 +697,24 @@ onUnmounted(() => {
 }
 
 .cart-row-discount {
-  color: #059669;
+  color: #15803d;
 }
 
 .is-free {
-  color: #059669;
+  color: #15803d;
 }
 
 .cart-row-total {
   margin-top: 8px;
   padding-top: 8px;
   border-top: 1px solid var(--sl-border, #cbd5e1);
-  font-size: 0.92rem;
-  font-weight: 800;
+  font-size: 0.9rem;
+  font-weight: 700;
 }
 
 .cart-total-price {
-  color: var(--sl-primary, #2563eb);
-  font-size: 1.05rem;
+  color: var(--sl-primary, #1d4ed8);
+  font-size: 1rem;
 }
 
 .cart-loyalty {
@@ -755,39 +730,39 @@ onUnmounted(() => {
 }
 
 .cart-btn-secondary {
-  padding: 9px 12px;
-  border-radius: 8px;
+  padding: 8px 12px;
+  border-radius: 6px;
   border: 1px solid var(--sl-border, #cbd5e1);
   background: var(--sl-surface, #ffffff);
   color: var(--sl-text-secondary, #475569);
   font-size: 0.8rem;
-  font-weight: 600;
+  font-weight: 500;
   cursor: pointer;
 }
 
 .cart-btn-primary {
   flex: 1;
-  padding: 9px 14px;
-  border-radius: 8px;
-  border: none;
-  background: #10b981;
+  padding: 8px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--sl-primary, #1d4ed8);
+  background: var(--sl-primary, #1d4ed8);
   color: #ffffff;
   font-size: 0.82rem;
-  font-weight: 700;
+  font-weight: 600;
   cursor: pointer;
 }
 
 .cart-checkout-form {
   margin-top: 12px;
   padding: 12px;
-  border-radius: 10px;
+  border-radius: 6px;
   border: 1px solid var(--sl-border, #cbd5e1);
   background: var(--sl-surface, #ffffff);
 }
 
 .cart-checkout-form h4 {
   margin: 0 0 10px;
-  font-size: 0.86rem;
+  font-size: 0.85rem;
 }
 
 .cart-field {
@@ -797,7 +772,7 @@ onUnmounted(() => {
 .cart-field label {
   display: block;
   font-size: 0.73rem;
-  font-weight: 600;
+  font-weight: 500;
   margin-bottom: 3px;
   color: var(--sl-text-secondary, #475569);
 }
@@ -807,31 +782,31 @@ onUnmounted(() => {
   width: 100%;
   box-sizing: border-box;
   padding: 7px 9px;
-  border-radius: 7px;
+  border-radius: 6px;
   border: 1px solid var(--sl-border, #cbd5e1);
   background: var(--sl-surface-subtle, #f8fafc);
-  color: var(--sl-text-primary, #0f172a);
+  color: var(--sl-text-primary, #1e293b);
   font-size: 0.8rem;
 }
 
 .cart-qr-preview {
   padding: 8px 10px;
   margin-bottom: 8px;
-  border-radius: 7px;
-  background: rgba(37, 99, 235, 0.1);
-  color: var(--sl-primary, #2563eb);
+  border-radius: 6px;
+  background: var(--sl-surface-subtle, #f1f5f9);
+  border: 1px solid var(--sl-border, #cbd5e1);
   font-size: 0.75rem;
 }
 
 .cart-submit-order {
   width: 100%;
-  padding: 10px;
-  border: none;
-  border-radius: 8px;
-  background: var(--sl-primary, #2563eb);
+  padding: 9px;
+  border: 1px solid var(--sl-primary, #1d4ed8);
+  border-radius: 6px;
+  background: var(--sl-primary, #1d4ed8);
   color: #ffffff;
-  font-weight: 700;
-  font-size: 0.83rem;
+  font-weight: 600;
+  font-size: 0.82rem;
   cursor: pointer;
 }
 

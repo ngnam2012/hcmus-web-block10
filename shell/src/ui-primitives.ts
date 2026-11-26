@@ -1,10 +1,6 @@
-/**
- * Tầng 2 của Design System (Phần 4): UI Primitive viết bằng Web Component chuẩn trình duyệt
- * dùng để hiển thị nhãn công nghệ và cổng của từng mảnh Micro Frontend.
- */
 class ShopLiteTechPill extends HTMLElement {
   static get observedAttributes() {
-    return ['tech', 'port', 'color'];
+    return ['tech', 'port'];
   }
 
   constructor() {
@@ -24,30 +20,27 @@ class ShopLiteTechPill extends HTMLElement {
     if (!this.shadowRoot) return;
     const tech = this.getAttribute('tech') || 'Remote';
     const port = this.getAttribute('port') || '';
-    const color = this.getAttribute('color') || '#2563eb';
 
     this.shadowRoot.innerHTML = `
       <style>
         .pill {
           display: inline-flex;
           align-items: center;
-          gap: 6px;
-          padding: 3px 9px;
-          border-radius: 999px;
+          gap: 5px;
+          padding: 2px 8px;
+          border-radius: 4px;
           font-family: var(--sl-font-sans, system-ui, sans-serif);
           font-size: 0.72rem;
-          font-weight: 800;
-          color: #ffffff;
-          background: ${color};
-          letter-spacing: 0.01em;
+          font-weight: 600;
+          color: var(--sl-text-secondary, #334155);
+          background: var(--sl-surface, #ffffff);
+          border: 1px solid var(--sl-border, #cbd5e1);
           white-space: nowrap;
         }
         .port {
-          padding: 1px 5px;
-          border-radius: 999px;
-          background: rgba(0, 0, 0, 0.22);
-          font-family: monospace;
-          font-size: 0.68rem;
+          color: var(--sl-text-secondary, #64748b);
+          font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+          font-size: 0.69rem;
         }
       </style>
       <span class="pill">
